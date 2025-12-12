@@ -1,10 +1,11 @@
+import 'package:buhay_link/app.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:buhay_link/main.dart'; // Imports your BuhayLinkApp
+
 
 void main() {
   testWidgets('Login page displays correctly', (WidgetTester tester) async {
     // 1. Build the app using your actual main widget name
-    await tester.pumpWidget(const BuhayLinkApp());
+    await tester.pumpWidget(const JobPullingApp());
 
     // 2. Allow animations to settle (important for navigation)
     await tester.pumpAndSettle();
