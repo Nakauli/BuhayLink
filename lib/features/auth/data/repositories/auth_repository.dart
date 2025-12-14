@@ -1,8 +1,26 @@
-import '../datasources/firebase_auth_service.dart'; //
+import 'package:firebase_auth/firebase_auth.dart';
+import '../auth_service.dart';
 
 class AuthRepository {
-  final _service = FirebaseAuthService();
+  // 1. Initialize the correct class name "AuthService"
+  final AuthService _service = AuthService();
 
-  Future<void> signIn(String email, String pass) => _service.signIn(email, pass);
-  Future<void> signOut() => _service.signOut();
+  // 2. Login: Pass parameters with names (email: ..., password: ...)
+  Future<User?> signIn(String email, String password) async {
+    return await _service.signIn(email: email, password: password);
+  }
+
+  // 3. Register: Add this so your App can actually sign up!
+  Future<User?> signUp(String email, String password, String username) async {
+    return await _service.signUp(
+      email: email, 
+      password: password, 
+      username: username
+    );
+  }
+
+  // 4. Sign Out
+  Future<void> signOut() async {
+    await _service.signOut();
+  }
 }
