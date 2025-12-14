@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../data/auth_service.dart';
-import 'package:buhay_link/features/home/presentation/pages/dashboard_page.dart';
-
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -12,10 +10,10 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   // --- CONTROLLERS ---
-  final TextEditingController _fullNameController = TextEditingController(); // For "Full Name"
+  final TextEditingController _fullNameController = TextEditingController(); 
   final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();    // For "Mobile Number"
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController(); 
   
   // --- STATE ---
   bool isLogin = true; 
@@ -28,15 +26,11 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       if (isLogin) {
-        // --- LOGIN: Email & Password ---
         await _authService.signIn(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
       } else {
-        // --- REGISTER: Email, Password, Name (and Phone if you add it to DB later) ---
-        // Note: Currently AuthService only accepts username/email/pass. 
-        // We pass "Full Name" as the username.
         await _authService.signUp(
           username: _fullNameController.text.trim(),
           email: _emailController.text.trim(),
@@ -50,19 +44,11 @@ class _LoginPageState extends State<LoginPage> {
         );
       }
     } catch (e) {
-      // If successful, navigate to Dashboard
       if (mounted) {
-        // 1. Show success message
         ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Success! Welcome.")),
-    );
-
-  // 2. NAVIGATE TO DASHBOARD!
-  Navigator.pushReplacement(
-    context, 
-    MaterialPageRoute(builder: (_) => const DashboardPage())
-  );
-}
+          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+        );
+      }
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
@@ -79,8 +65,8 @@ class _LoginPageState extends State<LoginPage> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF2E7EFF), // Blue (Top)
-              Color(0xFF9542FF), // Purple (Bottom)
+              Color(0xFF2E7EFF), // Top Blue
+              Color(0xFF9542FF), // Bottom Purple
             ],
           ),
         ),
@@ -111,7 +97,9 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text("JobPool", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                
+                // --- APP NAME UPDATED HERE ---
+                const Text("BuhayLink", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
                 const SizedBox(height: 4),
                 const Text("Connect. Work. Earn.", style: TextStyle(fontSize: 14, color: Colors.white70)),
                 const SizedBox(height: 30),
@@ -126,7 +114,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   child: Column(
                     children: [
-                      // 1. TABS
+                      // 1. TABS (Login / Register)
                       Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
@@ -139,14 +127,14 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       const SizedBox(height: 24),
 
-                      // 2. FORM FIELDS
+                      // 2. INPUT FIELDS
                       if (isLogin) ...[
-                        // --- LOGIN PAGE ---
                         _buildTextField(_emailController, "Email Address", Icons.email_outlined),
                         const SizedBox(height: 16),
                         _buildTextField(_passwordController, "Password", Icons.lock_outline, isPassword: true),
                         
                         const SizedBox(height: 12),
+                        
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
@@ -155,12 +143,11 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                       ] else ...[
-                        // --- REGISTER PAGE ---
                         _buildTextField(_fullNameController, "Full Name", Icons.person_outline),
                         const SizedBox(height: 16),
                         _buildTextField(_emailController, "Email Address", Icons.email_outlined),
                         const SizedBox(height: 16),
-                        _buildTextField(_phoneController, "Mobile Number", Icons.phone_outlined), // Visual only for now
+                        _buildTextField(_phoneController, "Mobile Number", Icons.phone_outlined),
                         const SizedBox(height: 16),
                         _buildTextField(_passwordController, "Password", Icons.lock_outline, isPassword: true),
                       ],
@@ -185,7 +172,7 @@ class _LoginPageState extends State<LoginPage> {
                           child: isLoading 
                             ? const CircularProgressIndicator(color: Colors.white)
                             : Text(
-                                isLogin ? "Login" : "Create Account", // Matches your screenshot text
+                                isLogin ? "Login" : "Create Account",
                                 style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                               ),
                         ),
@@ -193,7 +180,7 @@ class _LoginPageState extends State<LoginPage> {
 
                       const SizedBox(height: 24),
 
-                      // 4. GOOGLE SECTION
+                      // 4. GOOGLE / DIVIDER
                       Row(
                         children: [
                           Expanded(child: Divider(color: Colors.grey[300])),
@@ -205,6 +192,7 @@ class _LoginPageState extends State<LoginPage> {
                         ],
                       ),
                       const SizedBox(height: 20),
+                      
                       OutlinedButton.icon(
                         onPressed: () {},
                         style: OutlinedButton.styleFrom(
@@ -213,7 +201,6 @@ class _LoginPageState extends State<LoginPage> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           minimumSize: const Size(double.infinity, 50),
                         ),
-                        // Replace with Image.asset('assets/google_logo.png') for real logo
                         icon: const Icon(Icons.g_mobiledata, size: 30, color: Colors.black),
                         label: const Text("Google", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
                       ),
@@ -229,7 +216,7 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // --- HELPERS ---
+  // --- HELPER WIDGETS ---
   Widget _buildTab(String title, bool isLoginTab) {
     bool isActive = isLogin == isLoginTab;
     return Expanded(
@@ -237,7 +224,6 @@ class _LoginPageState extends State<LoginPage> {
         onTap: () {
           setState(() {
             isLogin = isLoginTab;
-            // Clear inputs when switching
             _emailController.clear();
             _passwordController.clear();
             _fullNameController.clear();
