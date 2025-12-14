@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'chat_detail_page.dart';
 
 class MessagesPage extends StatefulWidget {
   const MessagesPage({super.key});
@@ -94,10 +95,22 @@ class _MessagesPageState extends State<MessagesPage> {
     );
   }
 
-  Widget _buildConversationItem(Map<String, dynamic> chat) {
+Widget _buildConversationItem(Map<String, dynamic> chat) {
     return InkWell(
       onTap: () {
-        // Navigate to chat detail later
+        // --- NAVIGATION LOGIC ---
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatDetailPage(
+              userName: chat['name'],
+              jobTitle: chat['jobTag'],
+              budget: "₱5,000", // You can add this to your data map later
+              avatarColor: chat['avatarColor'],
+              isOnline: true, // We assume they are online for this demo
+            ),
+          ),
+        );
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -115,6 +128,23 @@ class _MessagesPageState extends State<MessagesPage> {
                   end: Alignment.bottomRight,
                 ),
               ),
+              // Green Online Dot (Visual only for list)
+              child: Stack(
+                children: [
+                   // (Avatar is background)
+                   Positioned(
+                     right: 0, bottom: 0,
+                     child: Container(
+                       width: 14, height: 14,
+                       decoration: BoxDecoration(
+                         color: Colors.green, 
+                         shape: BoxShape.circle,
+                         border: Border.all(color: Colors.white, width: 2),
+                       ),
+                     ),
+                   )
+                ],
+              ),
             ),
             const SizedBox(width: 16),
 
@@ -123,13 +153,10 @@ class _MessagesPageState extends State<MessagesPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header Row (Name + Time + Badge)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(chat['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      
-                      // Right Side: Time & Badge
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
@@ -138,44 +165,24 @@ class _MessagesPageState extends State<MessagesPage> {
                             const SizedBox(height: 4),
                             Container(
                               padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF2E7EFF), // Brand Blue
-                                shape: BoxShape.circle,
-                              ),
-                              child: Text(
-                                chat['unreadCount'].toString(),
-                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                              ),
+                              decoration: const BoxDecoration(color: Color(0xFF2E7EFF), shape: BoxShape.circle),
+                              child: Text(chat['unreadCount'].toString(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                             )
                           ]
                         ],
                       )
                     ],
                   ),
-                  
-                  // Message Preview
-                  // We use a slight transform to pull the text up if there is no badge, to align nicely
                   Transform.translate(
-                    offset: const Offset(0, -5), // Pull up slightly closer to name
-                    child: Text(
-                      chat['message'],
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                    ),
+                    offset: const Offset(0, -5),
+                    child: Text(chat['message'], maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey[600], fontSize: 14)),
                   ),
-                  
                   const SizedBox(height: 4),
-
-                  // Job Tag (Green Dot + Text)
                   Row(
                     children: [
                       const Icon(Icons.circle, size: 8, color: Colors.green),
                       const SizedBox(width: 6),
-                      Text(
-                        chat['jobTag'],
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
+                      Text(chat['jobTag'], style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                     ],
                   )
                 ],
