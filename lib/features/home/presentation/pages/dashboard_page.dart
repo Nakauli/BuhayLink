@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'search_page.dart'; // Ensure you created this file from the previous step!
+import 'messages_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -8,13 +10,16 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  // 1. STATE VARIABLES
+  // --- 1. NAVIGATION STATE ---
+  int _bottomNavIndex = 0; // 0 = Home, 1 = Search, etc.
+
+  // --- 2. HOME TAB STATE ---
   int selectedCategoryIndex = 0;
-  bool isFindJobs = true; // true = "Find Jobs", false = "My Posts"
+  bool isFindJobs = true; // Toggle state
   
   final List<String> categories = ["All", "Nearby", "Urgent", "High Pay", "Remote"];
 
-  // 2. YOUR JOB DATA
+  // Your Job Data
   final List<Map<String, dynamic>> jobList = [
     {
       "title": "Need experienced plumber for kitchen renovation",
@@ -38,8 +43,29 @@ class _DashboardPageState extends State<DashboardPage> {
       "time": "1 week ago",
       "isUrgent": false,
     },
-    // ... (Your other jobs are safe here in memory)
-     {
+    {
+      "title": "House painting - interior walls",
+      "tags": "Painting • Surface Preparation",
+      "price": "₱8,000 - ₱10,000",
+      "location": "Pasig City",
+      "user": "Ana Reyes",
+      "rating": "4.9",
+      "applicants": "15 applicants",
+      "time": "5 days ago",
+      "isUrgent": false,
+    },
+    {
+      "title": "Electrical wiring for new construction",
+      "tags": "Electrical Wiring • Safety",
+      "price": "₱25,000 - ₱30,000",
+      "location": "Taguig City",
+      "user": "Robert Garcia",
+      "rating": "4.7",
+      "applicants": "6 applicants",
+      "time": "2 weeks ago",
+      "isUrgent": false,
+    },
+    {
       "title": "AC repair and maintenance",
       "tags": "AC Repair • HVAC Maintenance",
       "price": "₱3,000 - ₱5,000",
@@ -52,9 +78,9 @@ class _DashboardPageState extends State<DashboardPage> {
     },
   ];
 
-  // 3. FILTER LOGIC
+  // Filter Logic
   List<Map<String, dynamic>> getFilteredJobs() {
-    if (!isFindJobs) return []; // No jobs to show in "My Posts" yet
+    if (!isFindJobs) return []; 
 
     String selectedCategory = categories[selectedCategoryIndex];
     switch (selectedCategory) {
@@ -76,86 +102,19 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredJobs = getFilteredJobs();
-
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      body: Column(
-        children: [
-          // --- HEADER SECTION ---
-          Container(
-            padding: const EdgeInsets.only(top: 50, left: 24, right: 24, bottom: 30),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF2E7EFF), Color(0xFF9542FF)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(30),
-                bottomRight: Radius.circular(30),
-              ),
-            ),
-            child: Column(
-              children: [
-                // Welcome Row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Welcome back,", style: TextStyle(color: Colors.white70, fontSize: 14)),
-                        Text("John Doe", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
-                      child: const Icon(Icons.notifications_none, color: Colors.white),
-                    )
-                  ],
-                ),
-                const SizedBox(height: 24),
-                
-                // --- TOGGLE BUTTON (Find Jobs vs My Posts) ---
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    children: [
-                      _buildToggleOption("Find Jobs", true),
-                      _buildToggleOption("My Posts", false),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
 
-                // Stats Cards
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildStatCard("12", "Completed", Icons.trending_up),
-                    _buildStatCard("4.8", "Rating", Icons.star_border),
-                    _buildStatCard("0", "Saved", Icons.bookmark_border),
-                  ],
-                ),
-              ],
-            ),
-          ),
+// --- MAIN BODY SWITCHER ---
+      body: _bottomNavIndex == 0 
+          ? _buildHomeContent()      // Index 0: Dashboard
+          : _bottomNavIndex == 1 
+              ? const SearchPage()   // Index 1: Search
+              : _bottomNavIndex == 3 
+                  ? const MessagesPage() // Index 3: MESSAGES (Added this!)
+                  : Center(child: Text("Tab $_bottomNavIndex Coming Soon")),
 
-          // --- DYNAMIC BODY CONTENT ---
-          Expanded(
-            child: isFindJobs 
-              ? _buildFindJobsView(filteredJobs) // Show Job List
-              : _buildMyPostsView(),             // Show "My Posts" (Empty State)
-          ),
-        ],
-      ),
-      
+      // --- BOTTOM NAVIGATION ---
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         backgroundColor: Colors.white,
@@ -163,7 +122,8 @@ class _DashboardPageState extends State<DashboardPage> {
         unselectedItemColor: Colors.grey,
         showSelectedLabels: true,
         showUnselectedLabels: true,
-        currentIndex: 0,
+        currentIndex: _bottomNavIndex,
+        onTap: (index) => setState(() => _bottomNavIndex = index),
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
           BottomNavigationBarItem(icon: Icon(Icons.search), label: "Search"),
@@ -175,122 +135,156 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- VIEW 1: FIND JOBS (The List) ---
-  Widget _buildFindJobsView(List<Map<String, dynamic>> jobs) {
-    return ListView(
-      padding: const EdgeInsets.only(top: 20, bottom: 20),
+  // --- HOME TAB CONTENT (Full Code) ---
+  Widget _buildHomeContent() {
+    final filteredJobs = getFilteredJobs();
+
+    return Column(
       children: [
-        // Categories
-        SizedBox(
-          height: 40,
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            scrollDirection: Axis.horizontal,
-            itemCount: categories.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              bool isSelected = selectedCategoryIndex == index;
-              return GestureDetector(
-                onTap: () => setState(() => selectedCategoryIndex = index),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFF2E7EFF) : Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: isSelected ? null : Border.all(color: Colors.grey.shade300),
-                    boxShadow: isSelected 
-                      ? [BoxShadow(color: const Color(0xFF2E7EFF).withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]
-                      : null,
-                  ),
-                  child: Text(
-                    categories[index],
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.grey[700],
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              );
-            },
+        // 1. Header Section
+        Container(
+          padding: const EdgeInsets.only(top: 50, left: 24, right: 24, bottom: 30),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF2E7EFF), Color(0xFF9542FF)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.only(
+              bottomLeft: Radius.circular(30),
+              bottomRight: Radius.circular(30),
+            ),
           ),
-        ),
-
-        const SizedBox(height: 24),
-
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
             children: [
-              Text("Available Jobs (${jobs.length})", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              TextButton(onPressed: (){}, child: const Text("See All", style: TextStyle(color: Colors.blue))),
+              // Welcome Row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Welcome back,", style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      Text("John Doe", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                    child: const Icon(Icons.notifications_none, color: Colors.white),
+                  )
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              // Toggle Button
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    _buildToggleOption("Find Jobs", true),
+                    _buildToggleOption("My Posts", false),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Stats Cards
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildStatCard("12", "Completed", Icons.trending_up),
+                  _buildStatCard("4.8", "Rating", Icons.star_border),
+                  _buildStatCard("0", "Saved", Icons.bookmark_border),
+                ],
+              ),
             ],
           ),
         ),
 
-        // Job List
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: jobs.isEmpty 
-            ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No jobs found")))
-            : ListView.separated(
-                physics: const NeverScrollableScrollPhysics(),
-                shrinkWrap: true,
-                itemCount: jobs.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 16),
-                itemBuilder: (context, index) => _buildJobCard(jobs[index]),
-              ),
+        // 2. Scrollable Body
+        Expanded(
+          child: isFindJobs 
+            ? ListView( // View 1: Job List
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                children: [
+                  // Categories
+                  SizedBox(
+                    height: 40,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      scrollDirection: Axis.horizontal,
+                      itemCount: categories.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 12),
+                      itemBuilder: (context, index) {
+                        bool isSelected = selectedCategoryIndex == index;
+                        return GestureDetector(
+                          onTap: () => setState(() => selectedCategoryIndex = index),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: isSelected ? const Color(0xFF2E7EFF) : Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              border: isSelected ? null : Border.all(color: Colors.grey.shade300),
+                              boxShadow: isSelected 
+                                ? [BoxShadow(color: const Color(0xFF2E7EFF).withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]
+                                : null,
+                            ),
+                            child: Text(
+                              categories[index],
+                              style: TextStyle(
+                                color: isSelected ? Colors.white : Colors.grey[700],
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text("Available Jobs (${filteredJobs.length})", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        TextButton(onPressed: (){}, child: const Text("See All", style: TextStyle(color: Colors.blue))),
+                      ],
+                    ),
+                  ),
+
+                  // Job List Items
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: filteredJobs.isEmpty 
+                      ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No jobs found")))
+                      : ListView.separated(
+                          physics: const NeverScrollableScrollPhysics(),
+                          shrinkWrap: true,
+                          itemCount: filteredJobs.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 16),
+                          itemBuilder: (context, index) => _buildJobCard(filteredJobs[index]),
+                        ),
+                  ),
+                ],
+              ) 
+            : _buildMyPostsView(), // View 2: My Posts
         ),
       ],
     );
   }
 
-  // --- VIEW 2: MY POSTS (The Empty State) ---
-  Widget _buildMyPostsView() {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text("Your Job Posts", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              TextButton(onPressed: (){}, child: const Text("See All", style: TextStyle(color: Colors.blue))),
-            ],
-          ),
-          const Spacer(), // Pushes content to middle
-          
-          // Empty State Content
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 20, spreadRadius: 5)],
-            ),
-            child: Icon(Icons.post_add, size: 60, color: Colors.grey[300]),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            "You haven't posted any jobs yet.\nTap the Post button to create your first job.",
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey[600], fontSize: 16, height: 1.5),
-          ),
-          
-          const Spacer(flex: 2), // Pushes content up slightly
-        ],
-      ),
-    );
-  }
+  // --- HELPER WIDGETS (Full Styling Restored) ---
 
-  // --- HELPER WIDGETS ---
-
-  // 1. Toggle Button Helper
   Widget _buildToggleOption(String title, bool isOptionFindJobs) {
-    // If isFindJobs is true, then "Find Jobs" is active.
-    // If isFindJobs is false, then "My Posts" is active.
     bool isActive = isFindJobs == isOptionFindJobs; 
-
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => isFindJobs = isOptionFindJobs),
@@ -310,6 +304,40 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildMyPostsView() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Your Job Posts", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              TextButton(onPressed: (){}, child: const Text("See All", style: TextStyle(color: Colors.blue))),
+            ],
+          ),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 20, spreadRadius: 5)],
+            ),
+            child: Icon(Icons.post_add, size: 60, color: Colors.grey[300]),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            "You haven't posted any jobs yet.\nTap the Post button to create your first job.",
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey[600], fontSize: 16, height: 1.5),
+          ),
+          const Spacer(flex: 2),
+        ],
       ),
     );
   }
