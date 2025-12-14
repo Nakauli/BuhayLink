@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/auth_service.dart';
+import 'package:buhay_link/features/home/presentation/pages/dashboard_page.dart';
+
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -48,11 +50,19 @@ class _LoginPageState extends State<LoginPage> {
         );
       }
     } catch (e) {
+      // If successful, navigate to Dashboard
       if (mounted) {
+        // 1. Show success message
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
-        );
-      }
+        const SnackBar(content: Text("Success! Welcome.")),
+    );
+
+  // 2. NAVIGATE TO DASHBOARD!
+  Navigator.pushReplacement(
+    context, 
+    MaterialPageRoute(builder: (_) => const DashboardPage())
+  );
+}
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
