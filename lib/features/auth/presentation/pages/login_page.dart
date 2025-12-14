@@ -9,30 +9,34 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  // Controllers
-  final TextEditingController _usernameController = TextEditingController();
+  // --- CONTROLLERS ---
+  final TextEditingController _fullNameController = TextEditingController(); // For "Full Name"
   final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();    // For "Mobile Number"
   final TextEditingController _passwordController = TextEditingController();
   
-  // State
+  // --- STATE ---
   bool isLogin = true; 
   bool isLoading = false;
   final AuthService _authService = AuthService();
 
+  // --- LOGIC ---
   void _submitForm() async {
     setState(() => isLoading = true);
 
     try {
       if (isLogin) {
-        // Login Logic (Uses Email & Password)
+        // --- LOGIN: Email & Password ---
         await _authService.signIn(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
       } else {
-        // Register Logic (Uses Username, Password, Email)
+        // --- REGISTER: Email, Password, Name (and Phone if you add it to DB later) ---
+        // Note: Currently AuthService only accepts username/email/pass. 
+        // We pass "Full Name" as the username.
         await _authService.signUp(
-          username: _usernameController.text.trim(),
+          username: _fullNameController.text.trim(),
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
@@ -62,11 +66,11 @@ class _LoginPageState extends State<LoginPage> {
         height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF5F60FF),
-              Color(0xFF9845FF),
+              Color(0xFF2E7EFF), // Blue (Top)
+              Color(0xFF9542FF), // Purple (Bottom)
             ],
           ),
         ),
@@ -74,31 +78,35 @@ class _LoginPageState extends State<LoginPage> {
           child: SingleChildScrollView(
             child: Column(
               children: [
-                const SizedBox(height: 50),
+                const SizedBox(height: 40),
                 
-                // LOGO
+                // --- LOGO ---
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 4),
+                    border: Border.all(color: Colors.white.withOpacity(0.2), width: 8),
                   ),
                   child: Container(
-                    width: 50,
-                    height: 50,
+                    width: 60,
+                    height: 60,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(colors: [Color(0xFF5F60FF), Color(0xFF9845FF)]),
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF2E7EFF), Color(0xFF9542FF)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 const Text("JobPool", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
-                const SizedBox(height: 8),
-                const Text("Connect. Work. Earn.", style: TextStyle(fontSize: 16, color: Colors.white70)),
-                const SizedBox(height: 40),
+                const SizedBox(height: 4),
+                const Text("Connect. Work. Earn.", style: TextStyle(fontSize: 14, color: Colors.white70)),
+                const SizedBox(height: 30),
 
-                // WHITE CARD
+                // --- WHITE CARD ---
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 24),
                   padding: const EdgeInsets.all(24),
@@ -108,7 +116,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   child: Column(
                     children: [
-                      // TOGGLE SWITCH
+                      // 1. TABS
                       Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
@@ -121,34 +129,40 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       const SizedBox(height: 24),
 
-                      // --- INPUT FIELDS ---
+                      // 2. FORM FIELDS
                       if (isLogin) ...[
-                        // Login Tab: Email -> Password
+                        // --- LOGIN PAGE ---
                         _buildTextField(_emailController, "Email Address", Icons.email_outlined),
                         const SizedBox(height: 16),
                         _buildTextField(_passwordController, "Password", Icons.lock_outline, isPassword: true),
+                        
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () {},
+                            child: const Text("Forgot Password?", style: TextStyle(color: Color(0xFF2E7EFF))),
+                          ),
+                        ),
                       ] else ...[
-                        // Register Tab: Username -> Password -> Email (YOUR REQUEST)
-                        // 1. Username (Top)
-                        _buildTextField(_usernameController, "Username", Icons.person_outline),
+                        // --- REGISTER PAGE ---
+                        _buildTextField(_fullNameController, "Full Name", Icons.person_outline),
                         const SizedBox(height: 16),
-                        
-                        // 2. Password (Middle)
-                        _buildTextField(_passwordController, "Password", Icons.lock_outline, isPassword: true),
-                        const SizedBox(height: 16),
-                        
-                        // 3. Gmail/Email (Bottom)
                         _buildTextField(_emailController, "Email Address", Icons.email_outlined),
+                        const SizedBox(height: 16),
+                        _buildTextField(_phoneController, "Mobile Number", Icons.phone_outlined), // Visual only for now
+                        const SizedBox(height: 16),
+                        _buildTextField(_passwordController, "Password", Icons.lock_outline, isPassword: true),
                       ],
                       
                       const SizedBox(height: 24),
 
-                      // ACTION BUTTON
+                      // 3. MAIN BUTTON
                       Container(
                         width: double.infinity,
                         height: 55,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [Color(0xFF5F60FF), Color(0xFF9845FF)]),
+                          gradient: const LinearGradient(colors: [Color(0xFF2E7EFF), Color(0xFF9542FF)]),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: ElevatedButton(
@@ -161,11 +175,39 @@ class _LoginPageState extends State<LoginPage> {
                           child: isLoading 
                             ? const CircularProgressIndicator(color: Colors.white)
                             : Text(
-                                isLogin ? "Login" : "Sign Up",
+                                isLogin ? "Login" : "Create Account", // Matches your screenshot text
                                 style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                               ),
                         ),
                       ),
+
+                      const SizedBox(height: 24),
+
+                      // 4. GOOGLE SECTION
+                      Row(
+                        children: [
+                          Expanded(child: Divider(color: Colors.grey[300])),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16),
+                            child: Text("or continue with", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          ),
+                          Expanded(child: Divider(color: Colors.grey[300])),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      OutlinedButton.icon(
+                        onPressed: () {},
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: BorderSide(color: Colors.grey.shade300),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          minimumSize: const Size(double.infinity, 50),
+                        ),
+                        // Replace with Image.asset('assets/google_logo.png') for real logo
+                        icon: const Icon(Icons.g_mobiledata, size: 30, color: Colors.black),
+                        label: const Text("Google", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+                      ),
+                      const SizedBox(height: 10),
                     ],
                   ),
                 ),
@@ -177,6 +219,7 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  // --- HELPERS ---
   Widget _buildTab(String title, bool isLoginTab) {
     bool isActive = isLogin == isLoginTab;
     return Expanded(
@@ -187,13 +230,14 @@ class _LoginPageState extends State<LoginPage> {
             // Clear inputs when switching
             _emailController.clear();
             _passwordController.clear();
-            _usernameController.clear();
+            _fullNameController.clear();
+            _phoneController.clear();
           });
         },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isActive ? Colors.blue : Colors.transparent,
+            color: isActive ? const Color(0xFF2E7EFF) : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Center(
@@ -216,14 +260,18 @@ class _LoginPageState extends State<LoginPage> {
       obscureText: isPassword,
       decoration: InputDecoration(
         hintText: hint,
-        prefixIcon: Icon(icon),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+        hintStyle: TextStyle(color: Colors.grey[400]),
+        prefixIcon: Icon(icon, color: Colors.grey[400]),
         filled: true,
-        fillColor: Colors.grey[50],
+        fillColor: Colors.white,
         contentPadding: const EdgeInsets.symmetric(vertical: 16),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade200),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF2E7EFF)),
         ),
       ),
     );
