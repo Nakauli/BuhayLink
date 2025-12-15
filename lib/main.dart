@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 // 👇 This imports the file where your partner set up all the Providers
 import 'app.dart'; 
 
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
