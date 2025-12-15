@@ -1,4 +1,4 @@
-import 'package:buhay_link/features/home/presentation/post_job_page.dart';
+import 'package:buhay_link/features/home/presentation/pages/post_job_page.dart';
 import 'package:flutter/material.dart';
 import 'search_page.dart';    // Ensure these files exist
 import 'messages_page.dart';  // form previous steps
