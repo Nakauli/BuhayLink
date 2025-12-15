@@ -12,6 +12,6 @@ class AppRoutes {
   static Map<String, WidgetBuilder> get routes => {
     login: (context) => const LoginPage(),
     home: (context) => const HomePage(),
-    addJob: (context) => const AddJobPage(),
+    addJob: (context) => const PostJobPage(),
   };
 }

@@ -12,4 +12,4 @@ void main() async {
   // 👇 CRITICAL CHANGE: Run 'JobPullingApp' instead of 'BuhayLinkApp'
   // This automatically loads the AuthProvider and JobProvider you need.
   runApp(const JobPullingApp()); 
-}
+} 
