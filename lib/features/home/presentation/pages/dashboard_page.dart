@@ -1,3 +1,4 @@
+import 'package:buhay_link/features/home/presentation/post_job_page.dart';
 import 'package:flutter/material.dart';
 import 'search_page.dart';    // Ensure these files exist
 import 'messages_page.dart';  // form previous steps
@@ -120,14 +121,15 @@ class _DashboardPageState extends State<DashboardPage> {
 
   // --- CONTENT SWITCHER ---
   Widget _getBodyContent() {
-    switch (_bottomNavIndex) {
-      case 0: return _buildHomeContent();
-      case 1: return const SearchPage();   // Links to your Search Page
-      case 2: return const Center(child: Text("Post Job Screen (Coming Soon)"));
-      case 3: return const MessagesPage(); // Links to your Messages Page
-      case 4: return const ProfilePage();  // Links to your Profile Page
-      default: return _buildHomeContent();
-    }
+    // Inside _getBodyContent() method:
+switch (_bottomNavIndex) {
+  case 0: return _buildHomeContent();
+  case 1: return const SearchPage();
+  case 2: return const PostJobPage(); // <--- CHANGE THIS LINE
+  case 3: return const MessagesPage();
+  case 4: return const ProfilePage();
+  default: return _buildHomeContent();
+}
   }
 
   // --- HOME TAB CONTENT (Restored Full UI) ---
