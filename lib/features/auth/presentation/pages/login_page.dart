@@ -1,5 +1,8 @@
+import 'package:buhay_link/features/home/presentation/pages/dashboard_page.dart';
 import 'package:flutter/material.dart';
 import '../../data/auth_service.dart';
+
+
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -26,11 +29,13 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       if (isLogin) {
+        // Login Logic
         await _authService.signIn(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
       } else {
+        // Register Logic
         await _authService.signUp(
           username: _fullNameController.text.trim(),
           email: _emailController.text.trim(),
@@ -39,8 +44,15 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(
+        // 1. Show Success Message
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Success! Welcome.")),
+        );
+
+        // 2. NAVIGATE TO DASHBOARD (This is what you were missing!)
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const DashboardPage()),
         );
       }
     } catch (e) {
@@ -88,15 +100,27 @@ class _LoginPageState extends State<LoginPage> {
                     height: 60,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF2E7EFF), Color(0xFF9542FF)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+                      color: Colors.white, // White background for the circle
+                    ),
+                    child: Center(
+                      // Gradient Icon Logic using ShaderMask
+                      child: ShaderMask(
+                        shaderCallback: (Rect bounds) {
+                          return const LinearGradient(
+                            colors: [Color(0xFF2E7EFF), Color(0xFF9542FF)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ).createShader(bounds);
+                        },
+                        child: const Icon(
+                          Icons.link, // The Link Icon representing "BuhayLink"
+                          size: 36,
+                          color: Colors.white, // This color is ignored by the ShaderMask but required
+                        ),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
                 
                 // --- APP NAME UPDATED HERE ---
                 const Text("BuhayLink", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
