@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'search_page.dart'; // Ensure you created this file from the previous step!
-import 'messages_page.dart';
+import 'search_page.dart';    // Ensure these files exist
+import 'messages_page.dart';  // form previous steps
+import 'profile_page.dart';   // form previous steps
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -10,16 +11,15 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  // --- 1. NAVIGATION STATE ---
-  int _bottomNavIndex = 0; // 0 = Home, 1 = Search, etc.
+  // --- NAVIGATION STATE ---
+  int _bottomNavIndex = 0; // 0=Home, 1=Search, 2=Post, 3=Messages, 4=Profile
 
-  // --- 2. HOME TAB STATE ---
+  // --- HOME TAB STATE ---
   int selectedCategoryIndex = 0;
   bool isFindJobs = true; // Toggle state
-  
   final List<String> categories = ["All", "Nearby", "Urgent", "High Pay", "Remote"];
 
-  // Your Job Data
+  // --- MOCK DATA ---
   final List<Map<String, dynamic>> jobList = [
     {
       "title": "Need experienced plumber for kitchen renovation",
@@ -44,15 +44,15 @@ class _DashboardPageState extends State<DashboardPage> {
       "isUrgent": false,
     },
     {
-      "title": "House painting - interior walls",
-      "tags": "Painting • Surface Preparation",
-      "price": "₱8,000 - ₱10,000",
-      "location": "Pasig City",
-      "user": "Ana Reyes",
-      "rating": "4.9",
-      "applicants": "15 applicants",
-      "time": "5 days ago",
-      "isUrgent": false,
+      "title": "AC repair and maintenance",
+      "tags": "AC Repair • HVAC Maintenance",
+      "price": "₱3,000 - ₱5,000",
+      "location": "Manila City",
+      "user": "Pedro Martinez",
+      "rating": "4.4",
+      "applicants": "5 applicants",
+      "time": "2 days ago",
+      "isUrgent": true,
     },
     {
       "title": "Electrical wiring for new construction",
@@ -65,20 +65,9 @@ class _DashboardPageState extends State<DashboardPage> {
       "time": "2 weeks ago",
       "isUrgent": false,
     },
-    {
-      "title": "AC repair and maintenance",
-      "tags": "AC Repair • HVAC Maintenance",
-      "price": "₱3,000 - ₱5,000",
-      "location": "Manila City",
-      "user": "Pedro Martinez",
-      "rating": "4.4",
-      "applicants": "5 applicants",
-      "time": "2 days ago",
-      "isUrgent": true,
-    },
   ];
 
-  // Filter Logic
+  // --- FILTER LOGIC FOR HOME TAB ---
   List<Map<String, dynamic>> getFilteredJobs() {
     if (!isFindJobs) return []; 
 
@@ -105,14 +94,8 @@ class _DashboardPageState extends State<DashboardPage> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
 
-// --- MAIN BODY SWITCHER ---
-      body: _bottomNavIndex == 0 
-          ? _buildHomeContent()      // Index 0: Dashboard
-          : _bottomNavIndex == 1 
-              ? const SearchPage()   // Index 1: Search
-              : _bottomNavIndex == 3 
-                  ? const MessagesPage() // Index 3: MESSAGES (Added this!)
-                  : Center(child: Text("Tab $_bottomNavIndex Coming Soon")),
+      // --- MAIN BODY SWITCHER ---
+      body: _getBodyContent(),
 
       // --- BOTTOM NAVIGATION ---
       bottomNavigationBar: BottomNavigationBar(
@@ -135,7 +118,19 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- HOME TAB CONTENT (Full Code) ---
+  // --- CONTENT SWITCHER ---
+  Widget _getBodyContent() {
+    switch (_bottomNavIndex) {
+      case 0: return _buildHomeContent();
+      case 1: return const SearchPage();   // Links to your Search Page
+      case 2: return const Center(child: Text("Post Job Screen (Coming Soon)"));
+      case 3: return const MessagesPage(); // Links to your Messages Page
+      case 4: return const ProfilePage();  // Links to your Profile Page
+      default: return _buildHomeContent();
+    }
+  }
+
+  // --- HOME TAB CONTENT (Restored Full UI) ---
   Widget _buildHomeContent() {
     final filteredJobs = getFilteredJobs();
 
@@ -281,7 +276,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- HELPER WIDGETS (Full Styling Restored) ---
+  // --- HELPER WIDGETS ---
 
   Widget _buildToggleOption(String title, bool isOptionFindJobs) {
     bool isActive = isFindJobs == isOptionFindJobs; 
