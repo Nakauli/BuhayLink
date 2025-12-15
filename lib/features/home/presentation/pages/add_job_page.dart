@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
-import 'package:firebase_auth/firebase_auth.dart';     // Import Auth
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class PostJobPage extends StatefulWidget {
   const PostJobPage({super.key});
@@ -10,30 +12,105 @@ class PostJobPage extends StatefulWidget {
 }
 
 class _PostJobPageState extends State<PostJobPage> {
-  // --- CONTROLLERS ---
+
+  // ---------------- GET CURRENT LOCATION ----------------
+  Future<void> _getCurrentLocation() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    setState(() => _isLoading = true);
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location services are disabled.')),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location permission denied')),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location permission permanently denied')),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks.first;
+        String address = "${place.locality}, ${place.country}";
+
+        setState(() {
+          _locationController.text = address;
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // ---------------- CONTROLLERS ----------------
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descController = TextEditingController();
   final TextEditingController _minBudgetController = TextEditingController();
   final TextEditingController _maxBudgetController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
 
-  // --- STATE VARIABLES ---
+  // ---------------- STATE ----------------
   String? _selectedCategory;
   DateTime? _selectedDate;
   bool _isUrgent = false;
-  bool _isLoading = false; // To show loading spinner
+  bool _isLoading = false;
 
-  // Skills Data
   final List<String> _allSkills = [
-    "Carpentry", "Plumbing", "Electrical", "Painting", "Welding",
-    "Masonry", "Landscaping", "HVAC Maintenance", "Web Development", "Roofing"
+    "Carpentry",
+    "Plumbing",
+    "Electrical",
+    "Painting",
+    "Welding",
+    "Masonry",
+    "Landscaping",
+    "HVAC Maintenance",
+    "Web Development",
+    "Roofing"
   ];
   final List<String> _selectedSkills = [];
 
-  // Categories
-  final List<String> _categories = ["Home Repair", "Technology", "Events", "Transport", "Cleaning"];
+  final List<String> _categories = [
+    "Home Repair",
+    "Technology",
+    "Events",
+    "Transport",
+    "Cleaning"
+  ];
 
-  // --- DATE PICKER ---
+  // ---------------- DATE PICKER ----------------
   Future<void> _pickDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -41,56 +118,63 @@ class _PostJobPageState extends State<PostJobPage> {
       firstDate: DateTime.now(),
       lastDate: DateTime(2026),
     );
-    if (picked != null && picked != _selectedDate) {
-      setState(() {
-        _selectedDate = picked;
-      });
+    if (picked != null) {
+      setState(() => _selectedDate = picked);
     }
   }
 
-  // --- SUBMIT JOB TO FIREBASE ---
-  // ✅ PASTE THIS INSTEAD:
+  // ---------------- SUBMIT JOB ----------------
   Future<void> _submitJob() async {
-    // 1. Check if empty
-    if (_titleController.text.isEmpty || _descController.text.isEmpty || _minBudgetController.text.isEmpty || _locationController.text.isEmpty || _selectedCategory == null || _selectedDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill in all required fields marked with *"), backgroundColor: Colors.red));
+    if (_titleController.text.isEmpty ||
+        _descController.text.isEmpty ||
+        _minBudgetController.text.isEmpty ||
+        _locationController.text.isEmpty ||
+        _selectedCategory == null ||
+        _selectedDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please fill in all required fields"),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      final User? user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception("You must be logged in.");
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception("Not logged in");
 
-      // 2. Prepare Data
-      final Map<String, dynamic> jobData = {
+      await FirebaseFirestore.instance.collection('jobs').add({
         "title": _titleController.text.trim(),
         "category": _selectedCategory,
         "description": _descController.text.trim(),
         "budgetMin": int.tryParse(_minBudgetController.text) ?? 0,
         "budgetMax": int.tryParse(_maxBudgetController.text) ?? 0,
         "location": _locationController.text.trim(),
-        "deadline": _selectedDate?.toIso8601String(),
+        "deadline": _selectedDate!.toIso8601String(),
         "skills": _selectedSkills,
         "isUrgent": _isUrgent,
         "postedBy": user.uid,
         "postedAt": FieldValue.serverTimestamp(),
-        "status": "Open", 
+        "status": "Open",
         "applicants": 0,
-      };
+      });
 
-      // 3. SEND TO FIREBASE
-      await FirebaseFirestore.instance.collection('jobs').add(jobData);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Job Posted Successfully!"),
+          backgroundColor: Colors.green,
+        ),
+      );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Job Posted Successfully!"), backgroundColor: Colors.green));
-        _clearForm();
-      }
+      _clearForm();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: ${e.toString()}"), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      setState(() => _isLoading = false);
     }
   }
 
@@ -108,6 +192,7 @@ class _PostJobPageState extends State<PostJobPage> {
     });
   }
 
+  // ---------------- UI ----------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -115,41 +200,43 @@ class _PostJobPageState extends State<PostJobPage> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
               child: Row(
                 children: const [
-                  Text("Post a Job", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  Text(
+                    "Post a Job",
+                    style:
+                        TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  ),
                 ],
               ),
             ),
-            
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("Fill in the details to find the right worker", style: TextStyle(color: Colors.grey)),
-                    const SizedBox(height: 24),
 
                     _buildLabel("Job Title *"),
-                    _buildTextField(_titleController, "e.g., Need a plumber to fix kitchen sink"),
+                    _buildTextField(
+                      _titleController,
+                      "e.g., Need a plumber to fix kitchen sink",
+                    ),
                     const SizedBox(height: 20),
 
                     _buildLabel("Category *"),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedCategory,
-                          hint: const Text("Select a category", style: TextStyle(color: Colors.grey)),
-                          isExpanded: true,
-                          items: _categories.map((String value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
-                          onChanged: (newValue) => setState(() => _selectedCategory = newValue),
-                        ),
+                    DropdownButtonFormField<String>(
+                      value: _selectedCategory,
+                      items: _categories
+                          .map((c) =>
+                              DropdownMenuItem(value: c, child: Text(c)))
+                          .toList(),
+                      onChanged: (val) =>
+                          setState(() => _selectedCategory = val),
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -158,25 +245,34 @@ class _PostJobPageState extends State<PostJobPage> {
                     TextField(
                       controller: _descController,
                       maxLines: 4,
-                      decoration: InputDecoration(
-                        hintText: "Describe the job in detail...",
-                        hintStyle: TextStyle(color: Colors.grey[400]),
-                        prefixIcon: const Padding(padding: EdgeInsets.only(bottom: 60), child: Icon(Icons.description_outlined, color: Colors.grey)),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
-                      ),
+                      decoration:
+                          const InputDecoration(border: OutlineInputBorder()),
                     ),
                     const SizedBox(height: 20),
 
                     _buildLabel("Budget Range (₱) *"),
                     Row(
                       children: [
-                        Expanded(child: _buildTextField(_minBudgetController, "Min", icon: Icons.attach_money, isNumber: true)),
+                        Expanded(
+                          child: _buildTextField(
+                            _minBudgetController,
+                            "Min",
+                            isNumber: true,
+                          ),
+                        ),
                         const SizedBox(width: 16),
-                        Expanded(child: _buildTextField(_maxBudgetController, "Max", icon: Icons.attach_money, isNumber: true)),
+                        Expanded(
+                          child: _buildTextField(
+                            _maxBudgetController,
+                            "Max",
+                            isNumber: true,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 20),
 
+                    // 🔁 REPLACED LOCATION ROW (GPS ENABLED)
                     Row(
                       children: [
                         Expanded(
@@ -184,11 +280,30 @@ class _PostJobPageState extends State<PostJobPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               _buildLabel("Location *"),
-                              _buildTextField(_locationController, "City", icon: Icons.location_on_outlined),
+                              TextField(
+                                controller: _locationController,
+                                decoration: InputDecoration(
+                                  hintText: "City",
+                                  prefixIcon: const Icon(
+                                    Icons.location_on_outlined,
+                                    color: Colors.grey,
+                                  ),
+                                  suffixIcon: IconButton(
+                                    icon: const Icon(
+                                      Icons.my_location,
+                                      color: Color(0xFF2E7EFF),
+                                    ),
+                                    onPressed: _getCurrentLocation,
+                                    tooltip: "Use my current location",
+                                  ),
+                                  border: const OutlineInputBorder(),
+                                ),
+                              ),
                             ],
                           ),
                         ),
                         const SizedBox(width: 16),
+
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -197,14 +312,16 @@ class _PostJobPageState extends State<PostJobPage> {
                               GestureDetector(
                                 onTap: _pickDate,
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-                                  decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.calendar_today, size: 18, color: Colors.grey),
-                                      const SizedBox(width: 8),
-                                      Text(_selectedDate == null ? "dd/mm/yy" : "${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}", style: TextStyle(color: _selectedDate == null ? Colors.grey : Colors.black)),
-                                    ],
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    border:
+                                        Border.all(color: Colors.grey.shade300),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    _selectedDate == null
+                                        ? "dd/mm/yy"
+                                        : "${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}",
                                   ),
                                 ),
                               ),
@@ -213,6 +330,7 @@ class _PostJobPageState extends State<PostJobPage> {
                         ),
                       ],
                     ),
+
                     const SizedBox(height: 24),
 
                     _buildLabel("Skills Required"),
@@ -220,47 +338,35 @@ class _PostJobPageState extends State<PostJobPage> {
                       spacing: 8,
                       runSpacing: 8,
                       children: _allSkills.map((skill) {
-                        final isSelected = _selectedSkills.contains(skill);
+                        final isSelected =
+                            _selectedSkills.contains(skill);
                         return FilterChip(
                           label: Text(skill),
                           selected: isSelected,
-                          onSelected: (bool selected) {
+                          onSelected: (val) {
                             setState(() {
-                              selected ? _selectedSkills.add(skill) : _selectedSkills.remove(skill);
+                              val
+                                  ? _selectedSkills.add(skill)
+                                  : _selectedSkills.remove(skill);
                             });
                           },
-                          backgroundColor: Colors.grey[100],
-                          selectedColor: const Color(0xFFE3F2FD),
-                          labelStyle: TextStyle(color: isSelected ? const Color(0xFF2E7EFF) : Colors.grey[700], fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: isSelected ? const Color(0xFF2E7EFF) : Colors.transparent)),
                         );
                       }).toList(),
                     ),
-                    const SizedBox(height: 24),
 
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      activeColor: const Color(0xFF2E7EFF),
-                      title: const Text("Mark as Urgent", style: TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: const Text("Get faster responses", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      value: _isUrgent,
-                      onChanged: (val) => setState(() => _isUrgent = val),
-                    ),
                     const SizedBox(height: 30),
 
-                    // SUBMIT BUTTON
                     SizedBox(
                       width: double.infinity,
                       height: 55,
                       child: ElevatedButton(
-                        onPressed: _isLoading ? null : _submitJob,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2E7EFF),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: _isLoading 
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text("Post Job", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                        onPressed:
+                            _isLoading ? null : _submitJob,
+                        child: _isLoading
+                            ? const CircularProgressIndicator(
+                                color: Colors.white,
+                              )
+                            : const Text("Post Job"),
                       ),
                     ),
                     const SizedBox(height: 40),
@@ -274,19 +380,23 @@ class _PostJobPageState extends State<PostJobPage> {
     );
   }
 
-  Widget _buildLabel(String text) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black87)));
+  Widget _buildLabel(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(text,
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+      );
 
-  Widget _buildTextField(TextEditingController controller, String hint, {IconData? icon, bool isNumber = false}) {
+  Widget _buildTextField(
+    TextEditingController controller,
+    String hint, {
+    bool isNumber = false,
+  }) {
     return TextField(
       controller: controller,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: Colors.grey[400]),
-        prefixIcon: icon != null ? Icon(icon, color: Colors.grey) : null,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF2E7EFF))),
+        border: const OutlineInputBorder(),
       ),
     );
   }
