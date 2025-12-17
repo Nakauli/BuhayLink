@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'add_job_page.dart';
+// --- IMPORTS FOR NAVIGATION ---
 import 'profile_page.dart'; 
 import 'messages_page.dart';
-import 'search_page.dart';
+import 'search_page.dart'; 
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -16,7 +17,8 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   int _selectedIndex = 0;
   bool _showMyPosts = false;
-  String _selectedFilter = "All"; // Tracks active filter
+  String _selectedFilter = "All"; // Tracks active button filter
+  String _searchQuery = "";       // <--- NEW: Tracks search text
 
   // --- 1. MAIN BUILD METHOD ---
   @override
@@ -111,10 +113,15 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
 
-        // B. SEARCH BAR
+        // B. SEARCH BAR (NOW WORKING!)
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: TextField(
+            onChanged: (value) {
+              setState(() {
+                _searchQuery = value.toLowerCase(); // <--- UPDATES SEARCH QUERY
+              });
+            },
             decoration: InputDecoration(
               hintText: "Search for jobs...",
               prefixIcon: const Icon(Icons.search, color: Colors.grey),
@@ -161,7 +168,7 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         const SizedBox(height: 10),
 
-        // E. LIVE FIREBASE LIST (WITH FILTER LOGIC)
+        // E. LIVE FIREBASE LIST (WITH SEARCH + FILTER LOGIC)
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: _showMyPosts 
@@ -174,19 +181,29 @@ class _DashboardPageState extends State<DashboardPage> {
                 return Center(child: Text(_showMyPosts ? "You haven't posted any jobs." : "No jobs found.", style: TextStyle(color: Colors.grey[500])));
               }
 
-              // --- FILTERING LOGIC STARTS HERE ---
+              // --- FILTERING LOGIC ---
               var docs = snapshot.data!.docs;
 
-              if (!_showMyPosts) { // Only filter if we are in "Find Jobs" mode
+              // 1. APPLY SEARCH FILTER
+              if (_searchQuery.isNotEmpty) {
+                docs = docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final title = (data['title'] ?? "").toString().toLowerCase();
+                  final category = (data['category'] ?? "").toString().toLowerCase();
+                  // Check if title OR category contains the search text
+                  return title.contains(_searchQuery) || category.contains(_searchQuery);
+                }).toList();
+              }
+
+              // 2. APPLY BUTTON FILTERS (Only in "Find Jobs" mode)
+              if (!_showMyPosts) { 
                 if (_selectedFilter == "Urgent") {
-                  // Keep only jobs where isUrgent is true
                   docs = docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     return data['isUrgent'] == true;
                   }).toList();
                 } 
                 else if (_selectedFilter == "\$ High Pay") {
-                  // Keep only jobs where Budget is > 20000
                   docs = docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final budget = data['budgetMax'] ?? 0;
@@ -194,7 +211,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   }).toList();
                 }
                 else if (_selectedFilter == "Nearby") {
-                  // Placeholder: Keep jobs that have "Santo Tomas" or "Davao" in location
                   docs = docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final loc = (data['location'] ?? "").toString().toLowerCase();
@@ -202,10 +218,9 @@ class _DashboardPageState extends State<DashboardPage> {
                   }).toList();
                 }
               }
-              // --- FILTERING LOGIC ENDS HERE ---
 
               if (docs.isEmpty) {
-                return Center(child: Text("No $_selectedFilter jobs found.", style: TextStyle(color: Colors.grey[500])));
+                return Center(child: Text("No matches found.", style: TextStyle(color: Colors.grey[500])));
               }
 
               return ListView.separated(
@@ -237,18 +252,13 @@ class _DashboardPageState extends State<DashboardPage> {
 
   // --- 3. HELPERS ---
   
- Widget _getBodyContent() {
+  Widget _getBodyContent() {
     switch (_selectedIndex) {
-      case 1: 
-        return const SearchPage(); // <--- Connects to search_page.dart
-      case 2: 
-        return const PostJobPage();
-      case 3: 
-        return const MessagesPage(); // <--- Connects to messages_page.dart
-      case 4: 
-        return const ProfilePage();  // <--- Connects to profile_page.dart
-      default: 
-        return const Center(child: Text("Page Not Found"));
+      case 1: return const SearchPage(); // Connects to search_page.dart
+      case 2: return const PostJobPage();
+      case 3: return const MessagesPage(); // Connects to messages_page.dart
+      case 4: return const ProfilePage();  // Connects to profile_page.dart
+      default: return const Center(child: Text("Page Not Found"));
     }
   }
 
@@ -257,6 +267,7 @@ class _DashboardPageState extends State<DashboardPage> {
       onTap: () => setState(() {
         _showMyPosts = text == "My Posts";
         _selectedFilter = "All"; // Reset filter when switching tabs
+        _searchQuery = "";       // Reset search when switching tabs
       }),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -294,7 +305,7 @@ class _DashboardPageState extends State<DashboardPage> {
     bool isActive = _selectedFilter == label;
 
     return GestureDetector(
-      onTap: () => setState(() => _selectedFilter = label), // Updates state on tap
+      onTap: () => setState(() => _selectedFilter = label), 
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
