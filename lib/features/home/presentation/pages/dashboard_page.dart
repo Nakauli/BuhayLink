@@ -13,16 +13,17 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   int _selectedIndex = 0;
-  bool _showMyPosts = false; // Toggle state: false = Find Jobs, true = My Posts
+  bool _showMyPosts = false;
+  String _selectedFilter = "All"; // Tracks active filter
 
   // --- 1. MAIN BUILD METHOD ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50], // Light background for the body
+      backgroundColor: Colors.grey[50],
       body: _selectedIndex == 0 
-          ? _buildHomeWithHeader() // Use the fancy header for Home
-          : _getBodyContent(),     // Use simple views for other tabs
+          ? _buildHomeWithHeader() 
+          : _getBodyContent(),
       
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
@@ -42,18 +43,18 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- 2. THE FANCY HOME DESIGN (Header + List) ---
+  // --- 2. HOME SCREEN DESIGN ---
   Widget _buildHomeWithHeader() {
     return Column(
       children: [
-        // A. THE BLUE HEADER
+        // A. BLUE HEADER
         Container(
           padding: const EdgeInsets.only(top: 50, left: 24, right: 24, bottom: 24),
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)], // Blue to Purple
+              colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
             ),
             borderRadius: BorderRadius.only(
               bottomLeft: Radius.circular(30),
@@ -62,7 +63,7 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           child: Column(
             children: [
-              // Greeting Row
+              // Greeting
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -82,7 +83,7 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
               const SizedBox(height: 24),
 
-              // The Toggle Button (Find Jobs | My Posts)
+              // Toggle Button
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(16)),
@@ -93,10 +94,9 @@ class _DashboardPageState extends State<DashboardPage> {
                   ],
                 ),
               ),
-
               const SizedBox(height: 24),
 
-              // Stats Row (Inside the blue header for better contrast)
+              // Stats Row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -111,7 +111,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
         // B. SEARCH BAR
         Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: TextField(
             decoration: InputDecoration(
               hintText: "Search for jobs...",
@@ -125,7 +125,28 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
 
-        // C. AVAILABLE JOBS HEADER
+        // C. FILTER ROW
+        if (!_showMyPosts)
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              children: [
+                _buildFilterChip("All"),
+                const SizedBox(width: 10),
+                _buildFilterChip("Nearby", icon: Icons.location_on_outlined),
+                const SizedBox(width: 10),
+                _buildFilterChip("Urgent", icon: Icons.access_time),
+                const SizedBox(width: 10),
+                _buildFilterChip("\$ High Pay"),
+              ],
+            ),
+          ),
+
+        const SizedBox(height: 16),
+
+        // D. "AVAILABLE JOBS" HEADER
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Row(
@@ -138,7 +159,7 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         const SizedBox(height: 10),
 
-        // D. THE FIREBASE LIST (Live Feed)
+        // E. LIVE FIREBASE LIST (WITH FILTER LOGIC)
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: _showMyPosts 
@@ -151,10 +172,42 @@ class _DashboardPageState extends State<DashboardPage> {
                 return Center(child: Text(_showMyPosts ? "You haven't posted any jobs." : "No jobs found.", style: TextStyle(color: Colors.grey[500])));
               }
 
-              final docs = snapshot.data!.docs;
+              // --- FILTERING LOGIC STARTS HERE ---
+              var docs = snapshot.data!.docs;
+
+              if (!_showMyPosts) { // Only filter if we are in "Find Jobs" mode
+                if (_selectedFilter == "Urgent") {
+                  // Keep only jobs where isUrgent is true
+                  docs = docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return data['isUrgent'] == true;
+                  }).toList();
+                } 
+                else if (_selectedFilter == "\$ High Pay") {
+                  // Keep only jobs where Budget is > 20000
+                  docs = docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final budget = data['budgetMax'] ?? 0;
+                    return budget >= 20000;
+                  }).toList();
+                }
+                else if (_selectedFilter == "Nearby") {
+                  // Placeholder: Keep jobs that have "Santo Tomas" or "Davao" in location
+                  docs = docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final loc = (data['location'] ?? "").toString().toLowerCase();
+                    return loc.contains("santo tomas") || loc.contains("davao");
+                  }).toList();
+                }
+              }
+              // --- FILTERING LOGIC ENDS HERE ---
+
+              if (docs.isEmpty) {
+                return Center(child: Text("No $_selectedFilter jobs found.", style: TextStyle(color: Colors.grey[500])));
+              }
 
               return ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
                 itemCount: docs.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 16),
                 itemBuilder: (context, index) {
@@ -180,7 +233,8 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- 3. HELPER: CONTENT FOR OTHER TABS ---
+  // --- 3. HELPERS ---
+  
   Widget _getBodyContent() {
     switch (_selectedIndex) {
       case 1: return const Center(child: Text("Search Page"));
@@ -191,36 +245,29 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  // --- 4. HELPER: TOGGLE BUTTON WIDGET ---
   Widget _buildToggleButton(String text, bool isActive) {
     return GestureDetector(
-      onTap: () => setState(() => _showMyPosts = text == "My Posts"),
+      onTap: () => setState(() {
+        _showMyPosts = text == "My Posts";
+        _selectedFilter = "All"; // Reset filter when switching tabs
+      }),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
           color: isActive ? Colors.white : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Center(
-          child: Text(
-            text,
-            style: TextStyle(
-              color: isActive ? const Color(0xFF2E7EFF) : Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
+        child: Center(child: Text(text, style: TextStyle(color: isActive ? const Color(0xFF2E7EFF) : Colors.white, fontWeight: FontWeight.bold))),
       ),
     );
   }
 
-  // --- 5. HELPER: STAT CARD WIDGET ---
   Widget _buildStatCard(String value, String label, IconData icon) {
     return Container(
       width: 100,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15), // Translucent white for header look
+        color: Colors.white.withOpacity(0.15),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withOpacity(0.2)),
       ),
@@ -236,7 +283,32 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- 6. HELPER: JOB CARD WIDGET ---
+  Widget _buildFilterChip(String label, {IconData? icon}) {
+    bool isActive = _selectedFilter == label;
+
+    return GestureDetector(
+      onTap: () => setState(() => _selectedFilter = label), // Updates state on tap
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF2E7EFF) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: isActive ? null : Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 14, color: isActive ? Colors.white : Colors.grey[600]),
+              const SizedBox(width: 6),
+            ],
+            Text(label, style: TextStyle(color: isActive ? Colors.white : Colors.grey[800], fontWeight: FontWeight.bold, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildJobCard(Map<String, dynamic> job) {
     return Container(
       padding: const EdgeInsets.all(20),
