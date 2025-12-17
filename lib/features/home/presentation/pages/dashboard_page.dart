@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'add_job_page.dart';
-// --- IMPORTS FOR NAVIGATION ---
-import 'profile_page.dart'; 
+import 'profile_page.dart';
 import 'messages_page.dart';
-import 'search_page.dart'; 
-import 'notifications_page.dart'; // <--- IMPORT THE NEW PAGE
+import 'search_page.dart';
+import 'notifications_page.dart';
+import 'job_details_page.dart'; // <--- IMPORT THIS
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -18,18 +18,17 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   int _selectedIndex = 0;
   bool _showMyPosts = false;
-  String _selectedFilter = "All"; 
-  String _searchQuery = "";       
+  String _selectedFilter = "All";
+  String _searchQuery = "";      
 
-  // --- 1. MAIN BUILD METHOD ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      body: _selectedIndex == 0 
-          ? _buildHomeWithHeader() 
+      body: _selectedIndex == 0
+          ? _buildHomeWithHeader()
           : _getBodyContent(),
-      
+     
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) => setState(() => _selectedIndex = index),
@@ -48,11 +47,10 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- 2. HOME SCREEN DESIGN ---
   Widget _buildHomeWithHeader() {
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid;
-    final emailName = user?.email?.split('@')[0] ?? "Guest"; 
+    final emailName = user?.email?.split('@')[0] ?? "Guest";
 
     return Column(
       children: [
@@ -80,7 +78,6 @@ class _DashboardPageState extends State<DashboardPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text("Welcome back,", style: TextStyle(color: Colors.white70, fontSize: 14)),
-                      // Fetch Name
                       if (uid != null)
                         StreamBuilder<DocumentSnapshot>(
                           stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
@@ -97,43 +94,28 @@ class _DashboardPageState extends State<DashboardPage> {
                          const Text("Guest", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                     ],
                   ),
-                  
-                  // --- NOTIFICATION BELL WITH RED DOT ---
+                 
+                  // Notification Bell
                   GestureDetector(
-                    onTap: () {
-                      // Navigate to Notifications Page
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsPage()));
-                    },
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsPage())),
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
                       child: StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('notifications')
-                            .where('recipientId', isEqualTo: uid)
-                            .where('read', isEqualTo: false) // Count only unread
-                            .snapshots(),
+                        stream: FirebaseFirestore.instance.collection('notifications').where('recipientId', isEqualTo: uid).where('read', isEqualTo: false).snapshots(),
                         builder: (context, snapshot) {
-                          int unreadCount = 0;
-                          if (snapshot.hasData) {
-                            unreadCount = snapshot.data!.docs.length;
-                          }
-
+                          int unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
                           return Stack(
                             clipBehavior: Clip.none,
                             children: [
                               const Icon(Icons.notifications, color: Colors.white),
                               if (unreadCount > 0)
                                 Positioned(
-                                  right: -2,
-                                  top: -2,
+                                  right: -2, top: -2,
                                   child: Container(
                                     padding: const EdgeInsets.all(4),
                                     decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                    child: Text(
-                                      unreadCount > 9 ? "9+" : unreadCount.toString(),
-                                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                    ),
+                                    child: Text(unreadCount > 9 ? "9+" : unreadCount.toString(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                                   ),
                                 ),
                             ],
@@ -210,13 +192,13 @@ class _DashboardPageState extends State<DashboardPage> {
 
         const SizedBox(height: 16),
 
-        // D. LIVE FIREBASE LIST
+        // D. LIVE FIREBASE LIST (With Click Logic!)
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: _showMyPosts 
+            stream: _showMyPosts
               ? FirebaseFirestore.instance.collection('jobs').where('postedBy', isEqualTo: FirebaseAuth.instance.currentUser?.uid).orderBy('postedAt', descending: true).snapshots()
               : FirebaseFirestore.instance.collection('jobs').orderBy('postedAt', descending: true).snapshots(),
-            
+           
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -231,7 +213,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   return (data['title'] ?? "").toString().toLowerCase().contains(_searchQuery) || (data['category'] ?? "").toString().toLowerCase().contains(_searchQuery);
                 }).toList();
               }
-              if (!_showMyPosts) { 
+              if (!_showMyPosts) {
                 if (_selectedFilter == "Urgent") docs = docs.where((doc) => (doc.data() as Map<String, dynamic>)['isUrgent'] == true).toList();
                 else if (_selectedFilter == "\$ High Pay") docs = docs.where((doc) => ((doc.data() as Map<String, dynamic>)['budgetMax'] ?? 0) >= 20000).toList();
                 else if (_selectedFilter == "Nearby") docs = docs.where((doc) => (doc.data() as Map<String, dynamic>)['location'].toString().toLowerCase().contains("santo tomas")).toList();
@@ -244,19 +226,37 @@ class _DashboardPageState extends State<DashboardPage> {
                 itemCount: docs.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 16),
                 itemBuilder: (context, index) {
-                  final data = docs[index].data() as Map<String, dynamic>;
+                  final doc = docs[index];
+                  final data = doc.data() as Map<String, dynamic>;
+                  final String jobId = doc.id; // Get the specific Job ID
+
+                  // Prepare Data for Details Page
                   final Map<String, dynamic> jobMap = {
                     "title": data['title'] ?? "Untitled Job",
                     "tag": data['category'] ?? "General",
                     "price": "₱${data['budgetMin'] ?? 0} - ₱${data['budgetMax'] ?? 0}",
                     "location": data['location'] ?? "Remote",
-                    "user": data['posterName'] ?? "Employer", 
-                    "rating": data['posterRating']?.toString() ?? "New", 
+                    "user": data['posterName'] ?? "Employer",
+                    "posterId": data['postedBy'], // <--- NEEDED FOR NOTIFICATIONS
+                    "rating": data['posterRating']?.toString() ?? "New",
                     "applicants": "${data['applicants'] ?? 0} applicants",
-                    "duration": "3 days", 
+                    "duration": "3 days",
                     "isUrgent": data['isUrgent'] ?? false,
                   };
-                  return _buildJobCard(jobMap);
+
+                  // --- HERE IS THE CLICK LOGIC ---
+                  return GestureDetector(
+                    onTap: () {
+                      // Navigate to the Details Page when clicked
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => JobDetailsPage(job: jobMap, jobId: jobId)
+                        )
+                      );
+                    },
+                    child: _buildJobCard(jobMap),
+                  );
                 },
               );
             },
@@ -267,7 +267,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // --- HELPERS ---
-  
+ 
   Widget _getBodyContent() {
     switch (_selectedIndex) {
       case 1: return const SearchPage();
@@ -300,7 +300,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildFilterChip(String label, {IconData? icon}) {
     bool isActive = _selectedFilter == label;
     return GestureDetector(
-      onTap: () => setState(() => _selectedFilter = label), 
+      onTap: () => setState(() => _selectedFilter = label),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -366,9 +366,9 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildInfoItem(Icons.schedule_outlined, job['duration']), 
+                    _buildInfoItem(Icons.schedule_outlined, job['duration']),
                     const SizedBox(height: 12),
-                    _buildInfoItem(Icons.people_outline_rounded, job['applicants']), 
+                    _buildInfoItem(Icons.people_outline_rounded, job['applicants']),
                   ],
                 ),
               ),
@@ -415,7 +415,7 @@ class _DashboardPageState extends State<DashboardPage> {
             text,
             style: TextStyle(color: isPrimary ? Colors.black87 : Colors.grey[600], fontSize: 13, fontWeight: isPrimary ? FontWeight.w700 : FontWeight.w500),
             overflow: TextOverflow.ellipsis,
-            maxLines: 1, 
+            maxLines: 1,
           ),
         ),
       ],
