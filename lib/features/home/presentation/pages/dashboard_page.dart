@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'add_job_page.dart';
-import 'profile_page.dart';
+import 'profile_page.dart'; 
 import 'messages_page.dart';
-import 'search_page.dart';
+import 'search_page.dart'; 
 import 'notifications_page.dart';
-import 'job_details_page.dart'; // <--- IMPORT THIS
+import 'job_details_page.dart'; 
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -18,17 +18,17 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   int _selectedIndex = 0;
   bool _showMyPosts = false;
-  String _selectedFilter = "All";
-  String _searchQuery = "";      
+  String _selectedFilter = "All"; 
+  String _searchQuery = "";       
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      body: _selectedIndex == 0
-          ? _buildHomeWithHeader()
+      body: _selectedIndex == 0 
+          ? _buildHomeWithHeader() 
           : _getBodyContent(),
-     
+      
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) => setState(() => _selectedIndex = index),
@@ -50,7 +50,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildHomeWithHeader() {
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid;
-    final emailName = user?.email?.split('@')[0] ?? "Guest";
+    final emailName = user?.email?.split('@')[0] ?? "Guest"; 
 
     return Column(
       children: [
@@ -94,7 +94,7 @@ class _DashboardPageState extends State<DashboardPage> {
                          const Text("Guest", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                     ],
                   ),
-                 
+                  
                   // Notification Bell
                   GestureDetector(
                     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsPage())),
@@ -192,13 +192,13 @@ class _DashboardPageState extends State<DashboardPage> {
 
         const SizedBox(height: 16),
 
-        // D. LIVE FIREBASE LIST (With Click Logic!)
+        // D. LIVE FIREBASE LIST
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: _showMyPosts
+            stream: _showMyPosts 
               ? FirebaseFirestore.instance.collection('jobs').where('postedBy', isEqualTo: FirebaseAuth.instance.currentUser?.uid).orderBy('postedAt', descending: true).snapshots()
               : FirebaseFirestore.instance.collection('jobs').orderBy('postedAt', descending: true).snapshots(),
-           
+            
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -213,7 +213,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   return (data['title'] ?? "").toString().toLowerCase().contains(_searchQuery) || (data['category'] ?? "").toString().toLowerCase().contains(_searchQuery);
                 }).toList();
               }
-              if (!_showMyPosts) {
+              if (!_showMyPosts) { 
                 if (_selectedFilter == "Urgent") docs = docs.where((doc) => (doc.data() as Map<String, dynamic>)['isUrgent'] == true).toList();
                 else if (_selectedFilter == "\$ High Pay") docs = docs.where((doc) => ((doc.data() as Map<String, dynamic>)['budgetMax'] ?? 0) >= 20000).toList();
                 else if (_selectedFilter == "Nearby") docs = docs.where((doc) => (doc.data() as Map<String, dynamic>)['location'].toString().toLowerCase().contains("santo tomas")).toList();
@@ -228,32 +228,24 @@ class _DashboardPageState extends State<DashboardPage> {
                 itemBuilder: (context, index) {
                   final doc = docs[index];
                   final data = doc.data() as Map<String, dynamic>;
-                  final String jobId = doc.id; // Get the specific Job ID
+                  final String jobId = doc.id; 
 
-                  // Prepare Data for Details Page
                   final Map<String, dynamic> jobMap = {
                     "title": data['title'] ?? "Untitled Job",
                     "tag": data['category'] ?? "General",
                     "price": "₱${data['budgetMin'] ?? 0} - ₱${data['budgetMax'] ?? 0}",
                     "location": data['location'] ?? "Remote",
-                    "user": data['posterName'] ?? "Employer",
-                    "posterId": data['postedBy'], // <--- NEEDED FOR NOTIFICATIONS
-                    "rating": data['posterRating']?.toString() ?? "New",
+                    "user": data['posterName'] ?? "Employer", 
+                    "posterId": data['postedBy'], 
+                    "rating": data['posterRating']?.toString() ?? "New", 
                     "applicants": "${data['applicants'] ?? 0} applicants",
-                    "duration": "3 days",
+                    "duration": "3 days", 
                     "isUrgent": data['isUrgent'] ?? false,
                   };
 
-                  // --- HERE IS THE CLICK LOGIC ---
                   return GestureDetector(
                     onTap: () {
-                      // Navigate to the Details Page when clicked
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => JobDetailsPage(job: jobMap, jobId: jobId)
-                        )
-                      );
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => JobDetailsPage(job: jobMap, jobId: jobId)));
                     },
                     child: _buildJobCard(jobMap),
                   );
@@ -267,11 +259,11 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // --- HELPERS ---
- 
+  
   Widget _getBodyContent() {
     switch (_selectedIndex) {
       case 1: return const SearchPage();
-      case 2: return const PostJobPage();
+      case 2: return const AddJobPage();
       case 3: return const MessagesPage();
       case 4: return const ProfilePage();
       default: return const Center(child: Text("Page Not Found"));
@@ -300,7 +292,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildFilterChip(String label, {IconData? icon}) {
     bool isActive = _selectedFilter == label;
     return GestureDetector(
-      onTap: () => setState(() => _selectedFilter = label),
+      onTap: () => setState(() => _selectedFilter = label), 
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -310,6 +302,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  // --- JOB CARD (FIXED: Forces current user email if name is missing) ---
   Widget _buildJobCard(Map<String, dynamic> job) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -366,38 +359,73 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildInfoItem(Icons.schedule_outlined, job['duration']),
+                    _buildInfoItem(Icons.schedule_outlined, job['duration']), 
                     const SizedBox(height: 12),
-                    _buildInfoItem(Icons.people_outline_rounded, job['applicants']),
+                    _buildInfoItem(Icons.people_outline_rounded, job['applicants']), 
                   ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [Colors.blue.shade300, Colors.purple.shade300])),
-                child: Center(child: Text(job['user'].isNotEmpty ? job['user'][0].toUpperCase() : "U", style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          
+          // --- REAL-TIME POSTER INFO (WITH "SELF-FIX" LOGIC) ---
+          StreamBuilder<DocumentSnapshot>(
+            stream: job['posterId'] != null 
+              ? FirebaseFirestore.instance.collection('users').doc(job['posterId']).snapshots() 
+              : null,
+            builder: (context, snapshot) {
+              String name = "Employer";
+
+              // 1. Try to use the name saved in the job document
+              if (job['user'] != null && job['user'] != "Employer") {
+                 name = job['user'];
+              }
+
+              // 2. SELF-FIX: If it's still "Employer", and it's MY POST, force my email
+              final currentUser = FirebaseAuth.instance.currentUser;
+              if (name == "Employer" && job['posterId'] == currentUser?.uid) {
+                 name = currentUser?.email?.split('@')[0] ?? "Me";
+              }
+
+              // 3. If we have live data from Firestore (for other users)
+              if (snapshot.hasData && snapshot.data!.exists) {
+                final userData = snapshot.data!.data() as Map<String, dynamic>?;
+                if (userData != null) {
+                   String? fetchedName = userData['fullName'] ?? userData['firstName'] ?? userData['username'];
+                   if (fetchedName != null && fetchedName.isNotEmpty) {
+                     name = fetchedName;
+                   }
+                }
+              }
+
+              String firstLetter = name.isNotEmpty ? name[0].toUpperCase() : "E";
+
+              return Row(
                 children: [
-                  Text(job['user'], style: const TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Row(children: [const Icon(Icons.star_rounded, size: 16, color: Colors.amber), const SizedBox(width: 4), Text(job['rating'], style: TextStyle(color: Colors.grey[700], fontSize: 12, fontWeight: FontWeight.w600))]),
+                  Container(
+                    width: 40, height: 40,
+                    decoration: BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [Colors.blue.shade300, Colors.purple.shade300])),
+                    child: Center(child: Text(firstLetter, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name, style: const TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 2),
+                      Row(children: [const Icon(Icons.star_rounded, size: 16, color: Colors.amber), const SizedBox(width: 4), Text(job['rating'], style: TextStyle(color: Colors.grey[700], fontSize: 12, fontWeight: FontWeight.w600))]),
+                    ],
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(20)),
+                    child: Text("Open", style: TextStyle(color: Colors.green[700], fontSize: 13, fontWeight: FontWeight.w700)),
+                  )
                 ],
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(20)),
-                child: Text("Open", style: TextStyle(color: Colors.green[700], fontSize: 13, fontWeight: FontWeight.w700)),
-              )
-            ],
+              );
+            }
           )
         ],
       ),
@@ -415,7 +443,7 @@ class _DashboardPageState extends State<DashboardPage> {
             text,
             style: TextStyle(color: isPrimary ? Colors.black87 : Colors.grey[600], fontSize: 13, fontWeight: isPrimary ? FontWeight.w700 : FontWeight.w500),
             overflow: TextOverflow.ellipsis,
-            maxLines: 1,
+            maxLines: 1, 
           ),
         ),
       ],

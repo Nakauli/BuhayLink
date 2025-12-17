@@ -1,403 +1,197 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
 
-class PostJobPage extends StatefulWidget {
-  const PostJobPage({super.key});
+class AddJobPage extends StatefulWidget {
+  const AddJobPage({super.key});
 
   @override
-  State<PostJobPage> createState() => _PostJobPageState();
+  State<AddJobPage> createState() => _AddJobPageState();
 }
 
-class _PostJobPageState extends State<PostJobPage> {
-
-  // ---------------- GET CURRENT LOCATION ----------------
-  Future<void> _getCurrentLocation() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    setState(() => _isLoading = true);
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Location services are disabled.')),
-      );
-      setState(() => _isLoading = false);
-      return;
-    }
-
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Location permission denied')),
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Location permission permanently denied')),
-      );
-      setState(() => _isLoading = false);
-      return;
-    }
-
-    try {
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
-
-      if (placemarks.isNotEmpty) {
-        Placemark place = placemarks.first;
-        String address = "${place.locality}, ${place.country}";
-
-        setState(() {
-          _locationController.text = address;
-        });
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error: $e")));
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  // ---------------- CONTROLLERS ----------------
+class _AddJobPageState extends State<AddJobPage> {
+  final _formKey = GlobalKey<FormState>();
+  
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descController = TextEditingController();
   final TextEditingController _minBudgetController = TextEditingController();
   final TextEditingController _maxBudgetController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
+  final TextEditingController _durationController = TextEditingController();
 
-  // ---------------- STATE ----------------
-  String? _selectedCategory;
-  DateTime? _selectedDate;
+  String _selectedCategory = "General";
   bool _isUrgent = false;
   bool _isLoading = false;
 
-  final List<String> _allSkills = [
-    "Carpentry",
-    "Plumbing",
-    "Electrical",
-    "Painting",
-    "Welding",
-    "Masonry",
-    "Landscaping",
-    "HVAC Maintenance",
-    "Web Development",
-    "Roofing"
-  ];
-  final List<String> _selectedSkills = [];
+  final List<String> _categories = ["General", "Plumbing", "Electrical", "Cleaning", "Technology", "Carpentry"];
 
-  final List<String> _categories = [
-    "Home Repair",
-    "Technology",
-    "Events",
-    "Transport",
-    "Cleaning"
-  ];
-
-  // ---------------- DATE PICKER ----------------
-  Future<void> _pickDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime(2026),
-    );
-    if (picked != null) {
-      setState(() => _selectedDate = picked);
-    }
-  }
-
-  // ---------------- SUBMIT JOB ----------------
-  Future<void> _submitJob() async {
-    if (_titleController.text.isEmpty ||
-        _descController.text.isEmpty ||
-        _minBudgetController.text.isEmpty ||
-        _locationController.text.isEmpty ||
-        _selectedCategory == null ||
-        _selectedDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please fill in all required fields"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
+  Future<void> _postJob() async {
+    if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception("Not logged in");
+      if (user == null) throw Exception("User not logged in");
 
+      // --- 1. DETERMINE THE POSTER NAME ---
+      String posterName = "Employer"; 
+      
+      // A. Try to get name from Firestore Profile
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (userDoc.exists) {
+        final data = userDoc.data();
+        posterName = data?['fullName'] ?? data?['firstName'] ?? data?['username'] ?? "";
+      }
+
+      // B. If Firestore failed (empty or "Employer"), use Email Nickname
+      if (posterName.isEmpty || posterName == "Employer") {
+        posterName = user.email!.split('@')[0]; // "aljuncursiga" from "aljuncursiga@gmail.com"
+      }
+
+      // --- 2. SAVE JOB TO FIREBASE ---
       await FirebaseFirestore.instance.collection('jobs').add({
-        "title": _titleController.text.trim(),
-        "category": _selectedCategory,
-        "description": _descController.text.trim(),
-        "budgetMin": int.tryParse(_minBudgetController.text) ?? 0,
-        "budgetMax": int.tryParse(_maxBudgetController.text) ?? 0,
-        "location": _locationController.text.trim(),
-        "deadline": _selectedDate!.toIso8601String(),
-        "skills": _selectedSkills,
-        "isUrgent": _isUrgent,
-        "postedBy": user.uid,
-        "postedAt": FieldValue.serverTimestamp(),
-        "status": "Open",
-        "applicants": 0,
+        'title': _titleController.text.trim(),
+        'description': _descController.text.trim(),
+        'category': _selectedCategory,
+        'budgetMin': int.tryParse(_minBudgetController.text) ?? 0,
+        'budgetMax': int.tryParse(_maxBudgetController.text) ?? 0,
+        'location': _locationController.text.trim(),
+        'duration': _durationController.text.trim(),
+        'isUrgent': _isUrgent,
+        'postedBy': user.uid,
+        'posterName': posterName, // <--- This will now save "aljuncursiga" guaranteed
+        'posterRating': 0.0,
+        'applicants': 0,
+        'postedAt': FieldValue.serverTimestamp(),
+        'status': 'open',
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Job Posted Successfully!"),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      _clearForm();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Job Posted Successfully!"), backgroundColor: Colors.green));
+        // Reset form
+        _titleController.clear();
+        _descController.clear();
+        _minBudgetController.clear();
+        _maxBudgetController.clear();
+        _locationController.clear();
+        _durationController.clear();
+        setState(() => _isUrgent = false);
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error: $e")));
-    } finally {
-      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
     }
+
+    setState(() => _isLoading = false);
   }
 
-  void _clearForm() {
-    _titleController.clear();
-    _descController.clear();
-    _minBudgetController.clear();
-    _maxBudgetController.clear();
-    _locationController.clear();
-    setState(() {
-      _selectedCategory = null;
-      _selectedDate = null;
-      _selectedSkills.clear();
-      _isUrgent = false;
-    });
-  }
-
-  // ---------------- UI ----------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              child: Row(
-                children: const [
-                  Text(
-                    "Post a Job",
-                    style:
-                        TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
+      appBar: AppBar(
+        title: const Text("Post a New Job", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildLabel("Job Title"),
+              _buildTextField(_titleController, "Ex: Kitchen Sink Repair"),
+              const SizedBox(height: 16),
+              
+              _buildLabel("Category"),
+              DropdownButtonFormField<String>(
+                value: _selectedCategory,
+                decoration: _inputDecoration("Select Category"),
+                items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                onChanged: (val) => setState(() => _selectedCategory = val!),
+              ),
+              const SizedBox(height: 16),
+
+              Row(
+                children: [
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [_buildLabel("Min Budget"), _buildTextField(_minBudgetController, "1000", isNumber: true)],
+                  )),
+                  const SizedBox(width: 16),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [_buildLabel("Max Budget"), _buildTextField(_maxBudgetController, "5000", isNumber: true)],
+                  )),
                 ],
               ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+              const SizedBox(height: 16),
 
-                    _buildLabel("Job Title *"),
-                    _buildTextField(
-                      _titleController,
-                      "e.g., Need a plumber to fix kitchen sink",
-                    ),
-                    const SizedBox(height: 20),
+              _buildLabel("Location"),
+              _buildTextField(_locationController, "Ex: Quezon City"),
+              const SizedBox(height: 16),
 
-                    _buildLabel("Category *"),
-                    DropdownButtonFormField<String>(
-                      value: _selectedCategory,
-                      items: _categories
-                          .map((c) =>
-                              DropdownMenuItem(value: c, child: Text(c)))
-                          .toList(),
-                      onChanged: (val) =>
-                          setState(() => _selectedCategory = val),
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
+              _buildLabel("Duration / Deadline"),
+              _buildTextField(_durationController, "Ex: 3 Days"),
+              const SizedBox(height: 16),
 
-                    _buildLabel("Description *"),
-                    TextField(
-                      controller: _descController,
-                      maxLines: 4,
-                      decoration:
-                          const InputDecoration(border: OutlineInputBorder()),
-                    ),
-                    const SizedBox(height: 20),
+              _buildLabel("Description"),
+              _buildTextField(_descController, "Describe the work needed...", maxLines: 4),
+              const SizedBox(height: 16),
 
-                    _buildLabel("Budget Range (₱) *"),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildTextField(
-                            _minBudgetController,
-                            "Min",
-                            isNumber: true,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildTextField(
-                            _maxBudgetController,
-                            "Max",
-                            isNumber: true,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-
-                    // 🔁 REPLACED LOCATION ROW (GPS ENABLED)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildLabel("Location *"),
-                              TextField(
-                                controller: _locationController,
-                                decoration: InputDecoration(
-                                  hintText: "City",
-                                  prefixIcon: const Icon(
-                                    Icons.location_on_outlined,
-                                    color: Colors.grey,
-                                  ),
-                                  suffixIcon: IconButton(
-                                    icon: const Icon(
-                                      Icons.my_location,
-                                      color: Color(0xFF2E7EFF),
-                                    ),
-                                    onPressed: _getCurrentLocation,
-                                    tooltip: "Use my current location",
-                                  ),
-                                  border: const OutlineInputBorder(),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildLabel("Deadline *"),
-                              GestureDetector(
-                                onTap: _pickDate,
-                                child: Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    border:
-                                        Border.all(color: Colors.grey.shade300),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    _selectedDate == null
-                                        ? "dd/mm/yy"
-                                        : "${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}",
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    _buildLabel("Skills Required"),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _allSkills.map((skill) {
-                        final isSelected =
-                            _selectedSkills.contains(skill);
-                        return FilterChip(
-                          label: Text(skill),
-                          selected: isSelected,
-                          onSelected: (val) {
-                            setState(() {
-                              val
-                                  ? _selectedSkills.add(skill)
-                                  : _selectedSkills.remove(skill);
-                            });
-                          },
-                        );
-                      }).toList(),
-                    ),
-
-                    const SizedBox(height: 30),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 55,
-                      child: ElevatedButton(
-                        onPressed:
-                            _isLoading ? null : _submitJob,
-                        child: _isLoading
-                            ? const CircularProgressIndicator(
-                                color: Colors.white,
-                              )
-                            : const Text("Post Job"),
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-                  ],
-                ),
+              SwitchListTile(
+                title: const Text("Mark as Urgent", style: TextStyle(fontWeight: FontWeight.bold)),
+                activeColor: Colors.red,
+                value: _isUrgent,
+                onChanged: (val) => setState(() => _isUrgent = val),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 30),
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _postJob,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2E7EFF),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  child: _isLoading 
+                    ? const CircularProgressIndicator(color: Colors.white) 
+                    : const Text("Post Job", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                ),
+              )
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildLabel(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(text,
-            style: const TextStyle(fontWeight: FontWeight.w600)),
-      );
+  Widget _buildLabel(String text) {
+    return Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)));
+  }
 
-  Widget _buildTextField(
-    TextEditingController controller,
-    String hint, {
-    bool isNumber = false,
-  }) {
-    return TextField(
+  Widget _buildTextField(TextEditingController controller, String hint, {bool isNumber = false, int maxLines = 1}) {
+    return TextFormField(
       controller: controller,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-      decoration: InputDecoration(
-        hintText: hint,
-        border: const OutlineInputBorder(),
-      ),
+      maxLines: maxLines,
+      validator: (val) => val == null || val.isEmpty ? "Required" : null,
+      decoration: _inputDecoration(hint),
+    );
+  }
+
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
+      filled: true,
+      fillColor: Colors.grey[50],
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
     );
   }
 }
