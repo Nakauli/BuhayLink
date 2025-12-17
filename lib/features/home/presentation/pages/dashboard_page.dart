@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'add_job_page.dart';
-// import 'profile_page.dart'; // Uncomment if you have this file
+import 'profile_page.dart'; 
+import 'messages_page.dart';
+import 'search_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -235,13 +237,18 @@ class _DashboardPageState extends State<DashboardPage> {
 
   // --- 3. HELPERS ---
   
-  Widget _getBodyContent() {
+ Widget _getBodyContent() {
     switch (_selectedIndex) {
-      case 1: return const Center(child: Text("Search Page"));
-      case 2: return const PostJobPage();
-      case 3: return const Center(child: Text("Messages Page"));
-      case 4: return const Center(child: Text("Profile Page"));
-      default: return const Center(child: Text("Page Not Found"));
+      case 1: 
+        return const SearchPage(); // <--- Connects to search_page.dart
+      case 2: 
+        return const PostJobPage();
+      case 3: 
+        return const MessagesPage(); // <--- Connects to messages_page.dart
+      case 4: 
+        return const ProfilePage();  // <--- Connects to profile_page.dart
+      default: 
+        return const Center(child: Text("Page Not Found"));
     }
   }
 
