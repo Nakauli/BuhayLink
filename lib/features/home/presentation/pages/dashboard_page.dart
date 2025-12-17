@@ -47,8 +47,12 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- 2. HOME SCREEN DESIGN ---
+  // --- 2. HOME SCREEN DESIGN (With Safe Fallback for Name) ---
   Widget _buildHomeWithHeader() {
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid;
+    final emailName = user?.email?.split('@')[0] ?? "Guest"; // Fallback name
+
     return Column(
       children: [
         // A. BLUE HEADER
@@ -67,17 +71,41 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           child: Column(
             children: [
-              // Greeting
+              // Greeting Row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column( // Removed const to allow dynamic name
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text("Welcome back,", style: TextStyle(color: Colors.white70, fontSize: 14)),
-                      // Shows current user's email as name for now
-                      Text(FirebaseAuth.instance.currentUser?.email?.split('@')[0] ?? "User", 
-                          style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                      
+                      // --- FETCH REAL NAME FROM FIRESTORE (FIXED) ---
+                      if (uid != null)
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+                          builder: (context, snapshot) {
+                            // 1. If Loading, show "..."
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const Text("...", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold));
+                            }
+
+                            // 2. If Data Found, show Real Name
+                            if (snapshot.hasData && snapshot.data!.exists) {
+                              final data = snapshot.data!.data() as Map<String, dynamic>?;
+                              final String realName = data?['fullName'] ?? data?['firstName'] ?? data?['username'] ?? emailName;
+                              return Text(
+                                realName, 
+                                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)
+                              );
+                            }
+                            
+                            // 3. If No Data Found, Show Email Name immediately
+                            return Text(emailName, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold));
+                          },
+                        )
+                      else
+                         const Text("Guest", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                     ],
                   ),
                   Container(
@@ -188,16 +216,15 @@ class _DashboardPageState extends State<DashboardPage> {
                 separatorBuilder: (_, __) => const SizedBox(height: 16),
                 itemBuilder: (context, index) {
                   final data = docs[index].data() as Map<String, dynamic>;
-                  // Map Firebase data
                   final Map<String, dynamic> jobMap = {
                     "title": data['title'] ?? "Untitled Job",
                     "tag": data['category'] ?? "General",
                     "price": "₱${data['budgetMin'] ?? 0} - ₱${data['budgetMax'] ?? 0}",
                     "location": data['location'] ?? "Remote",
-                    "user": data['posterName'] ?? "Employer", // This comes from AddJobPage
-                    "rating": data['posterRating']?.toString() ?? "New", // REALTIME PLACEHOLDER
+                    "user": data['posterName'] ?? "Employer", 
+                    "rating": data['posterRating']?.toString() ?? "New", 
                     "applicants": "${data['applicants'] ?? 0} applicants",
-                    "duration": "3 days", // You can calculate this from postedAt vs deadline
+                    "duration": "3 days", 
                     "isUrgent": data['isUrgent'] ?? false,
                   };
                   return _buildJobCard(jobMap);
@@ -254,7 +281,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- REFINED JOB CARD (Aligned Columns) ---
+  // --- REFINED JOB CARD ---
   Widget _buildJobCard(Map<String, dynamic> job) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -267,16 +294,10 @@ class _DashboardPageState extends State<DashboardPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Top Row: Title & Urgent
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  job['title'], 
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, height: 1.3, color: Colors.black87)
-                ),
-              ),
+              Expanded(child: Text(job['title'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, height: 1.3, color: Colors.black87))),
               if (job['isUrgent'])
                 Container(
                   margin: const EdgeInsets.only(left: 12),
@@ -288,26 +309,19 @@ class _DashboardPageState extends State<DashboardPage> {
               Icon(Icons.bookmark_border_rounded, color: Colors.grey[400], size: 26),
             ],
           ),
-          
           const SizedBox(height: 12),
           Text("Looking for a skilled professional to help with this project.", style: TextStyle(color: Colors.grey[600], fontSize: 13, height: 1.4), maxLines: 2, overflow: TextOverflow.ellipsis),
-
           const SizedBox(height: 16),
-          // Tag
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(12)),
             child: Text(job['tag'].toString(), style: TextStyle(color: Colors.blue[700], fontSize: 12, fontWeight: FontWeight.w600)),
           ),
-
           const SizedBox(height: 20),
           const Divider(height: 1, color: Colors.black12),
           const SizedBox(height: 16),
-
-          // --- 2. THE ALIGNMENT FIX (Using Columns/Expanded) ---
           Row(
             children: [
-              // Column 1: Price & Location (50% Width)
               Expanded(
                 flex: 1,
                 child: Column(
@@ -319,25 +333,20 @@ class _DashboardPageState extends State<DashboardPage> {
                   ],
                 ),
               ),
-              
-              // Column 2: Duration & Applicants (50% Width - Aligned Left)
               Expanded(
                 flex: 1,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildInfoItem(Icons.schedule_outlined, job['duration']), // Aligned with Price
+                    _buildInfoItem(Icons.schedule_outlined, job['duration']), 
                     const SizedBox(height: 12),
-                    _buildInfoItem(Icons.people_outline_rounded, job['applicants']), // Aligned with Location
+                    _buildInfoItem(Icons.people_outline_rounded, job['applicants']), 
                   ],
                 ),
               ),
             ],
           ),
-
           const SizedBox(height: 16),
-          
-          // 3. Bottom Poster Row (Realtime Data)
           Row(
             children: [
               Container(
@@ -351,12 +360,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 children: [
                   Text(job['user'], style: const TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 2),
-                  // Rating Logic: Shows "New" if no rating exists yet
-                  Row(children: [
-                    const Icon(Icons.star_rounded, size: 16, color: Colors.amber), 
-                    const SizedBox(width: 4), 
-                    Text(job['rating'], style: TextStyle(color: Colors.grey[700], fontSize: 12, fontWeight: FontWeight.w600))
-                  ]),
+                  Row(children: [const Icon(Icons.star_rounded, size: 16, color: Colors.amber), const SizedBox(width: 4), Text(job['rating'], style: TextStyle(color: Colors.grey[700], fontSize: 12, fontWeight: FontWeight.w600))]),
                 ],
               ),
               const Spacer(),
@@ -372,24 +376,19 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-// --- HELPER: INFO ITEM (Fixed to prevent overflow) ---
+  // --- HELPER: INFO ITEM (Fixed Overflow) ---
   Widget _buildInfoItem(IconData icon, String text, {bool isPrimary = false}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 18, color: isPrimary ? const Color(0xFF2E7EFF) : Colors.grey[400]),
         const SizedBox(width: 8),
-        // Flexible allows the text to shrink if it's too long
         Flexible(
           child: Text(
             text,
-            style: TextStyle(
-              color: isPrimary ? Colors.black87 : Colors.grey[600],
-              fontSize: 13,
-              fontWeight: isPrimary ? FontWeight.w700 : FontWeight.w500,
-            ),
-            overflow: TextOverflow.ellipsis, // Adds "..." if text is too long
-            maxLines: 1, // Keeps it on one line
+            style: TextStyle(color: isPrimary ? Colors.black87 : Colors.grey[600], fontSize: 13, fontWeight: isPrimary ? FontWeight.w700 : FontWeight.w500),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1, 
           ),
         ),
       ],
