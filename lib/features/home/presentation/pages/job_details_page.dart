@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'public_profile_page.dart'; // <--- Import the new page
 
 class JobDetailsPage extends StatefulWidget {
   final Map<String, dynamic> job;
@@ -86,53 +87,92 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                  
                   const SizedBox(height: 24),
 
-                  // 2. Profile Section (Card Style)
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[50],
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 50, height: 50,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(colors: [Colors.blue.shade300, Colors.purple.shade300])
-                          ),
-                          child: Center(child: Text(widget.job['user'][0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold))),
+                  // 2. Profile Section (REAL-TIME FETCH)
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: widget.job['posterId'] != null
+                        ? FirebaseFirestore.instance.collection('users').doc(widget.job['posterId']).snapshots()
+                        : null,
+                    builder: (context, snapshot) {
+                      // Logic to determine name (Fallback chain: Firestore -> Job Data -> "Employer")
+                      String name = widget.job['user'] ?? "Employer";
+                     
+                      // Fix for "My Posts" (Self)
+                      final currentUser = FirebaseAuth.instance.currentUser;
+                      if (name == "Employer" && widget.job['posterId'] == currentUser?.uid) {
+                         name = currentUser?.email?.split('@')[0] ?? "Me";
+                      }
+
+                      if (snapshot.hasData && snapshot.data!.exists) {
+                        final data = snapshot.data!.data() as Map<String, dynamic>?;
+                        final fetchedName = data?['fullName'] ?? data?['firstName'] ?? data?['username'];
+                        if (fetchedName != null && fetchedName.isNotEmpty) {
+                          name = fetchedName;
+                        }
+                      }
+                     
+                      String firstLetter = name.isNotEmpty ? name[0].toUpperCase() : "E";
+
+                      return Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(widget.job['user'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                              const SizedBox(height: 4),
-                              Row(children: [
-                                const Icon(Icons.star, color: Colors.amber, size: 14),
-                                const SizedBox(width: 4),
-                                Text(widget.job['rating'] == "New" ? "New Member" : "${widget.job['rating']} (24 reviews)", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                              ]),
-                            ],
-                          ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 50, height: 50,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(colors: [Colors.blue.shade300, Colors.purple.shade300])
+                              ),
+                              child: Center(child: Text(firstLetter, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold))),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                  const SizedBox(height: 4),
+                                  Row(children: [
+                                    const Icon(Icons.star, color: Colors.amber, size: 14),
+                                    const SizedBox(width: 4),
+                                    Text(widget.job['rating'] == "New" ? "New Member" : "${widget.job['rating']} (24 reviews)", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                                  ]),
+                                ],
+                              ),
+                            ),
+                            // VIEW PROFILE BUTTON
+                            OutlinedButton(
+                              onPressed: () {
+                                if (widget.job['posterId'] != null) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => PublicProfilePage(
+                                        userId: widget.job['posterId'],
+                                        userName: name
+                                      )
+                                    )
+                                  );
+                                }
+                              },
+                              style: OutlinedButton.styleFrom(
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                side: BorderSide(color: Colors.grey.shade300),
+                              ),
+                              child: const Text("View Profile", style: TextStyle(color: Colors.black87, fontSize: 12)),
+                            )
+                          ],
                         ),
-                        OutlinedButton(
-                          onPressed: () {},
-                          style: OutlinedButton.styleFrom(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                            side: BorderSide(color: Colors.grey.shade300),
-                          ),
-                          child: const Text("View Profile", style: TextStyle(color: Colors.black87, fontSize: 12)),
-                        )
-                      ],
-                    ),
+                      );
+                    },
                   ),
 
                   const SizedBox(height: 24),
 
-                  // 3. Info Grid (Budget, Applicants, Location, Deadline)
+                  // 3. Info Grid
                   Row(
                     children: [
                       Expanded(child: _buildInfoCard(Icons.attach_money, "Budget", widget.job['price'])),
@@ -208,12 +248,11 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     );
   }
 
-  // Helper for the Grid Cards (Budget, Location, etc.)
   Widget _buildInfoCard(IconData icon, String label, String value) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[50], // Very light grey background
+        color: Colors.grey[50],
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
