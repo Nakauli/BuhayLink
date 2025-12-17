@@ -6,6 +6,7 @@ import 'add_job_page.dart';
 import 'profile_page.dart'; 
 import 'messages_page.dart';
 import 'search_page.dart'; 
+import 'notifications_page.dart'; // <--- IMPORT THE NEW PAGE
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -47,11 +48,11 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- 2. HOME SCREEN DESIGN (With Safe Fallback for Name) ---
+  // --- 2. HOME SCREEN DESIGN ---
   Widget _buildHomeWithHeader() {
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid;
-    final emailName = user?.email?.split('@')[0] ?? "Guest"; // Fallback name
+    final emailName = user?.email?.split('@')[0] ?? "Guest"; 
 
     return Column(
       children: [
@@ -79,28 +80,16 @@ class _DashboardPageState extends State<DashboardPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text("Welcome back,", style: TextStyle(color: Colors.white70, fontSize: 14)),
-                      
-                      // --- FETCH REAL NAME FROM FIRESTORE (FIXED) ---
+                      // Fetch Name
                       if (uid != null)
                         StreamBuilder<DocumentSnapshot>(
                           stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
                           builder: (context, snapshot) {
-                            // 1. If Loading, show "..."
-                            if (snapshot.connectionState == ConnectionState.waiting) {
-                              return const Text("...", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold));
-                            }
-
-                            // 2. If Data Found, show Real Name
                             if (snapshot.hasData && snapshot.data!.exists) {
                               final data = snapshot.data!.data() as Map<String, dynamic>?;
                               final String realName = data?['fullName'] ?? data?['firstName'] ?? data?['username'] ?? emailName;
-                              return Text(
-                                realName, 
-                                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)
-                              );
+                              return Text(realName, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold));
                             }
-                            
-                            // 3. If No Data Found, Show Email Name immediately
                             return Text(emailName, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold));
                           },
                         )
@@ -108,10 +97,50 @@ class _DashboardPageState extends State<DashboardPage> {
                          const Text("Guest", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                     ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
-                    child: const Icon(Icons.notifications, color: Colors.white),
+                  
+                  // --- NOTIFICATION BELL WITH RED DOT ---
+                  GestureDetector(
+                    onTap: () {
+                      // Navigate to Notifications Page
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsPage()));
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                      child: StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('notifications')
+                            .where('recipientId', isEqualTo: uid)
+                            .where('read', isEqualTo: false) // Count only unread
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          int unreadCount = 0;
+                          if (snapshot.hasData) {
+                            unreadCount = snapshot.data!.docs.length;
+                          }
+
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              const Icon(Icons.notifications, color: Colors.white),
+                              if (unreadCount > 0)
+                                Positioned(
+                                  right: -2,
+                                  top: -2,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                    child: Text(
+                                      unreadCount > 9 ? "9+" : unreadCount.toString(),
+                                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
                   )
                 ],
               ),
@@ -281,7 +310,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- REFINED JOB CARD ---
   Widget _buildJobCard(Map<String, dynamic> job) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -376,7 +404,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- HELPER: INFO ITEM (Fixed Overflow) ---
   Widget _buildInfoItem(IconData icon, String text, {bool isPrimary = false}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
