@@ -141,14 +141,28 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
               const SizedBox(height: 24),
 
-              // Stats Row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _buildStatCard("12", "Completed", Icons.trending_up),
-                  _buildStatCard("4.8", "Rating", Icons.star),
-                  _buildStatCard("0", "Saved", Icons.bookmark),
-                ],
+              // THE 4 STATS BOXES SECTION (LABEL CHANGED HERE)
+              StreamBuilder<DocumentSnapshot>(
+                stream: uid != null ? FirebaseFirestore.instance.collection('users').doc(uid).snapshots() : null,
+                builder: (context, snapshot) {
+                  final data = snapshot.data?.data() as Map<String, dynamic>?;
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // 1. Applied
+                      _buildStatCard(data?['appliedCount']?.toString() ?? "0", "Applied", Icons.assignment_turned_in_rounded),
+                      
+                      // 2. Hired - Label changed from "Hired\n(Completed)" to "Hired"
+                      _buildStatCard(data?['hiredCompleted']?.toString() ?? "0", "Hired", Icons.handshake_rounded),
+                      
+                      // 3. Ratings
+                      _buildStatCard(data?['rating']?.toString() ?? "0.0", "Ratings", Icons.star_rounded),
+                      
+                      // 4. Saved
+                      _buildStatCard(data?['savedCount']?.toString() ?? "0", "Saved", Icons.bookmark_rounded),
+                    ],
+                  );
+                }
               ),
             ],
           ),
@@ -205,7 +219,6 @@ class _DashboardPageState extends State<DashboardPage> {
                 return Center(child: Text(_showMyPosts ? "You haven't posted any jobs." : "No jobs found.", style: TextStyle(color: Colors.grey[500])));
               }
 
-              // --- FILTERING LOGIC ---
               var docs = snapshot.data!.docs;
               if (_searchQuery.isNotEmpty) {
                 docs = docs.where((doc) {
@@ -281,11 +294,44 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  // 4 BOX UI HELPER
   Widget _buildStatCard(String value, String label, IconData icon) {
+    // Dynamic width calculation for 4 boxes
+    double boxWidth = (MediaQuery.of(context).size.width - 64) / 4; 
+
     return Container(
-      width: 100, padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.2))),
-      child: Column(children: [Icon(icon, color: Colors.white, size: 24), const SizedBox(height: 8), Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)), const SizedBox(height: 4), Text(label, style: const TextStyle(fontSize: 12, color: Colors.white70))]),
+      width: boxWidth,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 20),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 9,
+              color: Colors.white.withOpacity(0.7),
+              height: 1.1,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -302,7 +348,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- JOB CARD (FIXED: Forces current user email if name is missing) ---
   Widget _buildJobCard(Map<String, dynamic> job) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -348,9 +393,9 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                     _buildInfoItem(Icons.payments_outlined, job['price'], isPrimary: true),
-                     const SizedBox(height: 12),
-                     _buildInfoItem(Icons.location_on_outlined, job['location']),
+                    _buildInfoItem(Icons.payments_outlined, job['price'], isPrimary: true),
+                    const SizedBox(height: 12),
+                    _buildInfoItem(Icons.location_on_outlined, job['location']),
                   ],
                 ),
               ),
@@ -369,26 +414,19 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           const SizedBox(height: 16),
           
-          // --- REAL-TIME POSTER INFO (WITH "SELF-FIX" LOGIC) ---
           StreamBuilder<DocumentSnapshot>(
             stream: job['posterId'] != null 
               ? FirebaseFirestore.instance.collection('users').doc(job['posterId']).snapshots() 
               : null,
             builder: (context, snapshot) {
               String name = "Employer";
-
-              // 1. Try to use the name saved in the job document
               if (job['user'] != null && job['user'] != "Employer") {
-                 name = job['user'];
+                  name = job['user'];
               }
-
-              // 2. SELF-FIX: If it's still "Employer", and it's MY POST, force my email
               final currentUser = FirebaseAuth.instance.currentUser;
               if (name == "Employer" && job['posterId'] == currentUser?.uid) {
-                 name = currentUser?.email?.split('@')[0] ?? "Me";
+                  name = currentUser?.email?.split('@')[0] ?? "Me";
               }
-
-              // 3. If we have live data from Firestore (for other users)
               if (snapshot.hasData && snapshot.data!.exists) {
                 final userData = snapshot.data!.data() as Map<String, dynamic>?;
                 if (userData != null) {
@@ -398,9 +436,7 @@ class _DashboardPageState extends State<DashboardPage> {
                    }
                 }
               }
-
               String firstLetter = name.isNotEmpty ? name[0].toUpperCase() : "E";
-
               return Row(
                 children: [
                   Container(
@@ -438,14 +474,7 @@ class _DashboardPageState extends State<DashboardPage> {
       children: [
         Icon(icon, size: 18, color: isPrimary ? const Color(0xFF2E7EFF) : Colors.grey[400]),
         const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-            text,
-            style: TextStyle(color: isPrimary ? Colors.black87 : Colors.grey[600], fontSize: 13, fontWeight: isPrimary ? FontWeight.w700 : FontWeight.w500),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1, 
-          ),
-        ),
+        Flexible(child: Text(text, style: TextStyle(color: isPrimary ? Colors.black87 : Colors.grey[600], fontSize: 13, fontWeight: isPrimary ? FontWeight.w700 : FontWeight.w500), overflow: TextOverflow.ellipsis)),
       ],
     );
   }
