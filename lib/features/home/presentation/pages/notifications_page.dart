@@ -75,12 +75,14 @@ class NotificationsPage extends StatelessWidget {
                   itemCount: filteredDocs.length,
                   separatorBuilder: (context, index) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
-                    final data = filteredDocs[index].data() as Map<String, dynamic>;
+                    final doc = filteredDocs[index];
+                    final data = doc.data() as Map<String, dynamic>;
                     
                     final String applicantId = data['applicantId'] ?? "";
                     final String? jobId = data['jobId'];
                     final bool isRead = data['read'] ?? false;
                     final String type = data['type'] ?? 'application';
+                    final String recipientId = data['recipientId'] ?? "";
 
                     IconData icon = Icons.notifications;
                     Color iconBg = Colors.grey;
@@ -99,55 +101,86 @@ class NotificationsPage extends StatelessWidget {
                       iconBg = Colors.blue;
                     }
 
-                    return GestureDetector(
-                      onTap: () async {
-                        // Mark as read
-                        if (data['recipientId'] != 'all') {
-                           await FirebaseFirestore.instance.collection('notifications').doc(filteredDocs[index].id).update({'read': true});
-                        }
-
-                        if (jobId != null) {
-                          // CASE 1: Employer clicking an applicant -> Open Profile
-                          if (isEmployerMode && applicantId.isNotEmpty) {
-                             _navigateToProfile(context, applicantId, jobId);
-                          } 
-                          // CASE 2: New Job Alert -> Open Job (No status)
-                          else if (type == 'new_post') {
-                             _navigateToJob(context, jobId, type); 
-                          }
-                          // CASE 3: Hired/Rejected -> Open Job (WITH STATUS FLAGS)
-                          else if (type == 'hired' || type == 'rejected') {
-                             _navigateToJob(context, jobId, type); 
-                          }
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
+                    // --- SWIPE TO DELETE WIDGET ---
+                    return Dismissible(
+                      key: Key(doc.id), // Unique ID for this row
+                      direction: DismissDirection.endToStart, // Swipe Right to Left
+                      
+                      // The Red Background with Delete Icon
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
                         decoration: BoxDecoration(
-                          color: isRead ? Colors.white : Colors.blue[50], 
+                          color: Colors.red,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade200),
                         ),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              backgroundColor: iconBg,
-                              radius: 20,
-                              child: Icon(icon, color: Colors.white, size: 20),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(data['title'] ?? "Notification", style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 4),
-                                  Text(data['message'] ?? "", style: TextStyle(color: Colors.grey[700], fontSize: 13)),
-                                ],
+                        child: const Icon(Icons.delete, color: Colors.white, size: 30),
+                      ),
+                      
+                      // Check before deleting
+                      confirmDismiss: (direction) async {
+                        if (recipientId == 'all') {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("System notifications cannot be deleted.")),
+                          );
+                          return false; // Prevent deletion of global messages
+                        }
+                        return true; // Allow deletion
+                      },
+                      
+                      // Delete Action
+                      onDismissed: (direction) async {
+                        await FirebaseFirestore.instance.collection('notifications').doc(doc.id).delete();
+                      },
+
+                      // YOUR ORIGINAL UI INSIDE THE DISMISSIBLE
+                      child: GestureDetector(
+                        onTap: () async {
+                          // Mark as read
+                          if (data['recipientId'] != 'all') {
+                             await FirebaseFirestore.instance.collection('notifications').doc(doc.id).update({'read': true});
+                          }
+
+                          if (jobId != null) {
+                            if (isEmployerMode && applicantId.isNotEmpty) {
+                               _navigateToProfile(context, applicantId, jobId);
+                            } 
+                            else if (type == 'new_post') {
+                               _navigateToJob(context, jobId, type); 
+                            }
+                            else if (type == 'hired' || type == 'rejected') {
+                               _navigateToJob(context, jobId, type); 
+                            }
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: isRead ? Colors.white : Colors.blue[50], 
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                backgroundColor: iconBg,
+                                radius: 20,
+                                child: Icon(icon, color: Colors.white, size: 20),
                               ),
-                            ),
-                            if (!isRead) const CircleAvatar(radius: 5, backgroundColor: Colors.red),
-                          ],
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(data['title'] ?? "Notification", style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 4),
+                                    Text(data['message'] ?? "", style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+                                  ],
+                                ),
+                              ),
+                              if (!isRead) const CircleAvatar(radius: 5, backgroundColor: Colors.red),
+                            ],
+                          ),
                         ),
                       ),
                     );
@@ -158,7 +191,7 @@ class NotificationsPage extends StatelessWidget {
     );
   }
 
-  // --- HELPER 1: Navigate to Job Details (Updated to pass Flags) ---
+  // --- HELPER 1: Navigate to Job Details ---
   void _navigateToJob(BuildContext context, String jobId, String notificationType) async {
     try {
       DocumentSnapshot jobDoc = await FirebaseFirestore.instance.collection('jobs').doc(jobId).get();
@@ -185,7 +218,6 @@ class NotificationsPage extends StatelessWidget {
              builder: (context) => JobDetailsPage(
                job: jobMap, 
                jobId: jobId,
-               // --- THIS IS THE KEY CHANGE ---
                isHired: notificationType == 'hired', 
                isRejected: notificationType == 'rejected',
              )
