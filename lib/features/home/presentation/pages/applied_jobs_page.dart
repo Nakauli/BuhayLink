@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'job_details_page.dart'; // Import JobDetailsPage
 
 class AppliedJobsPage extends StatelessWidget {
   const AppliedJobsPage({super.key});
@@ -20,7 +21,6 @@ class AppliedJobsPage extends StatelessWidget {
       body: uid == null
           ? const Center(child: Text("Please login."))
           : StreamBuilder<QuerySnapshot>(
-              // 1. FETCH THE SAVED APPLICATIONS
               stream: FirebaseFirestore.instance
                   .collection('users')
                   .doc(uid)
@@ -51,7 +51,8 @@ class AppliedJobsPage extends StatelessWidget {
                   separatorBuilder: (context, index) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final data = snapshot.data!.docs[index].data() as Map<String, dynamic>;
-                    return _buildApplicationCard(data);
+                    // Pass the context to handle navigation
+                    return _buildApplicationCard(context, data);
                   },
                 );
               },
@@ -59,38 +60,68 @@ class AppliedJobsPage extends StatelessWidget {
     );
   }
 
-  Widget _buildApplicationCard(Map<String, dynamic> data) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-            child: const Icon(Icons.work, color: Color(0xFF2E7EFF)),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(data['title'] ?? 'Job Title', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 4),
-                Text(data['price'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              ],
+  Widget _buildApplicationCard(BuildContext context, Map<String, dynamic> data) {
+    return GestureDetector(
+      onTap: () async {
+        // 1. Get the Job ID from the saved application data
+        String jobId = data['jobId'];
+
+        // 2. Fetch the FULL job details from the 'jobs' collection
+        // We need this because the 'applications' list only stores the title/price,
+        // but the Details Page needs the description, posterId, etc.
+        try {
+          DocumentSnapshot jobDoc = await FirebaseFirestore.instance.collection('jobs').doc(jobId).get();
+
+          if (jobDoc.exists) {
+            // 3. Navigate to Job Details
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => JobDetailsPage(
+                  job: jobDoc.data() as Map<String, dynamic>,
+                  jobId: jobId,
+                ),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("This job post no longer exists.")));
+          }
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error opening job: $e")));
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.work, color: Color(0xFF2E7EFF)),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-            child: const Text("Applied", style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
-          ),
-        ],
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(data['title'] ?? 'Job Title', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 4),
+                  Text(data['price'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+              child: const Text("View", style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
       ),
     );
   }
