@@ -6,12 +6,14 @@ class PublicProfilePage extends StatefulWidget {
   final String userId;
   final String userName;
   final String? jobId; // Optional: Only exists if reviewing a specific application
+  final String? jobTitle; // <--- NEW: The title of the job they applied for
 
   const PublicProfilePage({
     super.key,
     required this.userId,
     required this.userName,
     this.jobId,
+    this.jobTitle, // <--- Add to constructor
   });
 
   @override
@@ -36,7 +38,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
       await FirebaseFirestore.instance.collection('notifications').add({
         'recipientId': widget.userId,
         'title': 'Congratulations! You are Hired',
-        'message': "You have been hired by ${currentUser?.email?.split('@')[0] ?? 'Employer'} for this job.",
+        'message': "You have been hired by ${currentUser?.email?.split('@')[0] ?? 'Employer'} for the position: ${widget.jobTitle ?? 'Job'}.",
         'read': false,
         'timestamp': FieldValue.serverTimestamp(),
         'type': 'hired',
@@ -65,7 +67,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
       await FirebaseFirestore.instance.collection('notifications').add({
         'recipientId': widget.userId,
         'title': 'Application Update',
-        'message': "Your application was not selected for this position.",
+        'message': "Your application for ${widget.jobTitle ?? 'the position'} was not selected.",
         'read': false,
         'timestamp': FieldValue.serverTimestamp(),
         'type': 'rejected',
@@ -246,7 +248,34 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 
                 const SizedBox(height: 30),
 
-                // 7. ACTION BUTTONS
+                // --- 7. JOB CONTEXT SECTION (NEW) ---
+                if (widget.jobTitle != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 24),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.shade100),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.work_outline, color: Colors.blue),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text("Applying for:", style: TextStyle(color: Colors.blue, fontSize: 12)),
+                              Text(widget.jobTitle!, style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 15)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // --- 8. ACTION BUTTONS ---
                 
                 // A. SHOW HIRE/REJECT (Only if reviewing an application)
                 if (widget.jobId != null) ...[

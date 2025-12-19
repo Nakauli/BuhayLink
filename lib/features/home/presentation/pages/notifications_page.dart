@@ -18,7 +18,10 @@ class NotificationsPage extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: const BackButton(color: Colors.black),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Text(
           isEmployerMode ? "Employer Notifications" : "Applicant Notifications", 
           style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)
@@ -27,7 +30,6 @@ class NotificationsPage extends StatelessWidget {
       body: uid == null
           ? const Center(child: Text("Please login."))
           : StreamBuilder<QuerySnapshot>(
-              // Fetch notifications for the current user OR 'all'
               stream: FirebaseFirestore.instance
                   .collection('notifications')
                   .where('recipientId', whereIn: [uid, 'all']) 
@@ -41,19 +43,17 @@ class NotificationsPage extends StatelessWidget {
                    return const Center(child: Text("No notifications found.", style: TextStyle(color: Colors.grey)));
                 }
 
-                // --- FILTERING LOGIC ---
+                // FILTERING LOGIC
                 final filteredDocs = snapshot.data!.docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   final type = data['type'];
                   final posterId = data['posterId'];
 
                   if (isEmployerMode) {
-                    // Employer Mode: Only see Applications
                     return type == 'application';
                   } else {
-                    // Applicant Mode: See Hired, Rejected, New Posts
                     if (type == 'new_post') {
-                       return posterId != uid; // Hide my own posts
+                       return posterId != uid; 
                     }
                     return ['hired', 'rejected', 'new_post'].contains(type);
                   }
@@ -63,7 +63,7 @@ class NotificationsPage extends StatelessWidget {
                    return const Center(child: Text("No new notifications.", style: TextStyle(color: Colors.grey)));
                 }
 
-                // --- SORTING (Client-side) ---
+                // SORTING
                 filteredDocs.sort((a, b) {
                   Timestamp t1 = a['timestamp'] ?? Timestamp.now();
                   Timestamp t2 = b['timestamp'] ?? Timestamp.now();
@@ -101,15 +101,24 @@ class NotificationsPage extends StatelessWidget {
 
                     return GestureDetector(
                       onTap: () async {
+                        // Mark as read
                         if (data['recipientId'] != 'all') {
                            await FirebaseFirestore.instance.collection('notifications').doc(filteredDocs[index].id).update({'read': true});
                         }
 
-                        // NAVIGATION LOGIC
-                        if (type == 'new_post' && jobId != null) {
-                           _navigateToJob(context, jobId);
-                        } else if (isEmployerMode && applicantId.isNotEmpty) {
-                           _navigateToProfile(context, applicantId, jobId);
+                        if (jobId != null) {
+                          // CASE 1: Employer clicking an applicant -> Open Profile
+                          if (isEmployerMode && applicantId.isNotEmpty) {
+                             _navigateToProfile(context, applicantId, jobId);
+                          } 
+                          // CASE 2: New Job Alert -> Open Job (No status)
+                          else if (type == 'new_post') {
+                             _navigateToJob(context, jobId, type); 
+                          }
+                          // CASE 3: Hired/Rejected -> Open Job (WITH STATUS FLAGS)
+                          else if (type == 'hired' || type == 'rejected') {
+                             _navigateToJob(context, jobId, type); 
+                          }
                         }
                       },
                       child: Container(
@@ -149,56 +158,13 @@ class NotificationsPage extends StatelessWidget {
     );
   }
 
-  // --- 1. IMPROVED NAME FETCHING LOGIC ---
-  void _navigateToProfile(BuildContext context, String userId, String? jobId) async {
-    String finalName = "Applicant"; // Default fallback
-    
-    try {
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
-      
-      if (userDoc.exists) {
-        final userData = userDoc.data() as Map<String, dynamic>;
-        
-        // CHECK ALL POSSIBLE FIELDS
-        if (userData['fullName'] != null && userData['fullName'].toString().isNotEmpty) {
-          finalName = userData['fullName'];
-        } else if (userData['firstName'] != null && userData['firstName'].toString().isNotEmpty) {
-           // Combine First + Last if available
-           String first = userData['firstName'];
-           String last = userData['lastName'] ?? "";
-           finalName = "$first $last".trim();
-        } else if (userData['username'] != null && userData['username'].toString().isNotEmpty) {
-          finalName = userData['username'];
-        } else if (userData['name'] != null && userData['name'].toString().isNotEmpty) {
-          finalName = userData['name'];
-        } else if (userData['email'] != null) {
-          // Absolute last resort: use email prefix
-          finalName = userData['email'].split('@')[0];
-        }
-      }
-    } catch (e) {
-      debugPrint("Error fetching name: $e");
-    }
-
-    if (context.mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => PublicProfilePage(
-            userId: userId, 
-            userName: finalName, // Now passes the correct fetched name
-            jobId: jobId
-          )
-        )
-      );
-    }
-  }
-
-  void _navigateToJob(BuildContext context, String jobId) async {
+  // --- HELPER 1: Navigate to Job Details (Updated to pass Flags) ---
+  void _navigateToJob(BuildContext context, String jobId, String notificationType) async {
     try {
       DocumentSnapshot jobDoc = await FirebaseFirestore.instance.collection('jobs').doc(jobId).get();
       if (jobDoc.exists && context.mounted) {
          final jobData = jobDoc.data() as Map<String, dynamic>;
+         
          final Map<String, dynamic> jobMap = {
             "title": jobData['title'] ?? "Job",
             "tag": jobData['category'] ?? "General",
@@ -210,11 +176,74 @@ class NotificationsPage extends StatelessWidget {
             "applicants": "${jobData['applicants'] ?? 0} applicants",
             "duration": "3 days",
             "isUrgent": jobData['isUrgent'] ?? false,
+            "description": jobData['description'] ?? "No description.",
          };
-         Navigator.push(context, MaterialPageRoute(builder: (context) => JobDetailsPage(job: jobMap, jobId: jobId)));
+
+         Navigator.push(
+           context, 
+           MaterialPageRoute(
+             builder: (context) => JobDetailsPage(
+               job: jobMap, 
+               jobId: jobId,
+               // --- THIS IS THE KEY CHANGE ---
+               isHired: notificationType == 'hired', 
+               isRejected: notificationType == 'rejected',
+             )
+           )
+         );
       }
     } catch (e) {
       debugPrint("Error fetching job: $e");
+    }
+  }
+
+  // --- HELPER 2: Navigate to Profile ---
+  void _navigateToProfile(BuildContext context, String userId, String? jobId) async {
+    String finalName = "Applicant";
+    String? finalJobTitle; 
+
+    try {
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+      if (userDoc.exists) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        
+        if (userData['fullName'] != null && userData['fullName'].toString().isNotEmpty) {
+          finalName = userData['fullName'];
+        } else if (userData['firstName'] != null && userData['firstName'].toString().isNotEmpty) {
+           String first = userData['firstName'];
+           String last = userData['lastName'] ?? "";
+           finalName = "$first $last".trim();
+        } else if (userData['username'] != null && userData['username'].toString().isNotEmpty) {
+          finalName = userData['username'];
+        } else if (userData['email'] != null) {
+          finalName = userData['email'].split('@')[0];
+        }
+      }
+
+      if (jobId != null) {
+        DocumentSnapshot jobDoc = await FirebaseFirestore.instance.collection('jobs').doc(jobId).get();
+        if (jobDoc.exists) {
+           final jobData = jobDoc.data() as Map<String, dynamic>;
+           finalJobTitle = jobData['title'];
+        }
+      }
+
+    } catch (e) {
+      debugPrint("Error fetching data: $e");
+    }
+
+    if (context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PublicProfilePage(
+            userId: userId, 
+            userName: finalName, 
+            jobId: jobId,
+            jobTitle: finalJobTitle, 
+          )
+        )
+      );
     }
   }
 }

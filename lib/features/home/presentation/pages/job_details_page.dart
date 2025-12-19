@@ -6,8 +6,16 @@ import 'public_profile_page.dart';
 class JobDetailsPage extends StatefulWidget {
   final Map<String, dynamic> job;
   final String jobId;
+  final bool isHired;    
+  final bool isRejected; 
 
-  const JobDetailsPage({super.key, required this.job, required this.jobId});
+  const JobDetailsPage({
+    super.key, 
+    required this.job, 
+    required this.jobId,
+    this.isHired = false,
+    this.isRejected = false,
+  });
 
   @override
   State<JobDetailsPage> createState() => _JobDetailsPageState();
@@ -56,47 +64,26 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     }
 
     try {
-      // --- STEP 1: FETCH REAL NAME (AGGRESSIVE CHECK) ---
-      // Start with the email as a fallback
       String applicantName = user.email?.split('@')[0] ?? "Applicant";
-      
-      // Fetch the user's profile to get the real name
       DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       
       if (userDoc.exists) {
         final data = userDoc.data() as Map<String, dynamic>;
-        
-        // Check ALL possible name fields to ensure we get the real name
-        // 1. Check 'fullName' (e.g. "Kym Bogani")
         if (data['fullName'] != null && data['fullName'].toString().isNotEmpty) {
           applicantName = data['fullName'];
-        } 
-        // 2. Check 'firstName' + 'lastName'
-        else if (data['firstName'] != null && data['firstName'].toString().isNotEmpty) {
+        } else if (data['firstName'] != null && data['firstName'].toString().isNotEmpty) {
           String first = data['firstName'];
           String last = data['lastName'] ?? "";
           applicantName = "$first $last".trim();
-        }
-        // 3. Check just 'name'
-        else if (data['name'] != null && data['name'].toString().isNotEmpty) {
-          applicantName = data['name'];
-        }
-        // 4. Fallback to 'username' only if no real name exists
-        else if (data['username'] != null && data['username'].toString().isNotEmpty) {
+        } else if (data['username'] != null && data['username'].toString().isNotEmpty) {
           applicantName = data['username'];
         }
       }
-      
-      // Debug print to console so you can check what name is being used
-      debugPrint("APPLYING AS NAME: $applicantName"); 
-      // --------------------------------------------------------
 
-      // --- STEP 2: SEND NOTIFICATION ---
-      // This saves the message PERMANENTLY. If you change code later, old messages won't change.
       await FirebaseFirestore.instance.collection('notifications').add({
         'recipientId': employerId,
         'title': 'New Applicant',
-        'message': "$applicantName has applied for: ${widget.job['title']}", // Uses the fetched name
+        'message': "$applicantName has applied for: ${widget.job['title']}",
         'applicantId': user.uid,
         'jobId': widget.jobId,
         'read': false,
@@ -104,12 +91,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         'type': 'application',
       });
 
-      // --- STEP 3: SAVE TO HISTORY ---
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('applications')
-          .add({
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('applications').add({
         'jobId': widget.jobId,
         'title': widget.job['title'],
         'price': widget.job['price'] ?? "₱${widget.job['budgetMin']} - ₱${widget.job['budgetMax']}",
@@ -118,7 +100,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         'employerId': employerId,
       });
 
-      // --- STEP 4: UPDATE STATS ---
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'appliedCount': FieldValue.increment(1),
       });
@@ -127,11 +108,8 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
       });
 
       setState(() => _hasApplied = true);
-
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Application Sent!"), backgroundColor: Colors.green),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Application Sent!"), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
@@ -165,8 +143,60 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  
+                  // --- 1. HIRED / REJECTED BANNERS ---
+                  if (widget.isHired)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 24),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.green[50],
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(Icons.check_circle, color: Colors.green, size: 40),
+                          const SizedBox(height: 8),
+                          const Text("Congratulations!", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 18)),
+                          const SizedBox(height: 4),
+                          Text("You have been hired for this project. Please contact the employer to discuss the details.", textAlign: TextAlign.center, style: TextStyle(color: Colors.green[800], fontSize: 13)),
+                        ],
+                      ),
+                    ),
+
+                  if (widget.isRejected)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 24),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.cancel, color: Colors.red, size: 30),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text("Application Update", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+                                const SizedBox(height: 4),
+                                Text("Unfortunately, you were not selected for this position.", style: TextStyle(color: Colors.red[800], fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  
+                  // --- 2. JOB HEADER ---
                   Text(
-                    widget.job['title'],
+                    widget.job['title'] ?? "Job Title",
                     style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, height: 1.3),
                   ),
                   const SizedBox(height: 12),
@@ -175,10 +205,9 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                     decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(20)),
                     child: Text(widget.job['tag'].toString(), style: TextStyle(color: Colors.blue[700], fontSize: 12, fontWeight: FontWeight.w600)),
                   ),
-                  
                   const SizedBox(height: 24),
 
-                  // Profile Section
+                  // --- 3. EMPLOYER CARD ---
                   StreamBuilder<DocumentSnapshot>(
                     stream: widget.job['posterId'] != null
                         ? FirebaseFirestore.instance.collection('users').doc(widget.job['posterId']).snapshots()
@@ -186,11 +215,9 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                     builder: (context, snapshot) {
                       String name = widget.job['user'] ?? "Employer";
                       final currentUser = FirebaseAuth.instance.currentUser;
-                      
                       if (name == "Employer" && widget.job['posterId'] == currentUser?.uid) {
-                         name = currentUser?.email?.split('@')[0] ?? "Me";
+                          name = currentUser?.email?.split('@')[0] ?? "Me";
                       }
-
                       if (snapshot.hasData && snapshot.data!.exists) {
                         final data = snapshot.data!.data() as Map<String, dynamic>?;
                         final fetchedName = data?['fullName'] ?? data?['firstName'] ?? data?['username'];
@@ -198,7 +225,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                           name = fetchedName;
                         }
                       }
-                      
                       String firstLetter = name.isNotEmpty ? name[0].toUpperCase() : "E";
 
                       return Container(
@@ -242,6 +268,8 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                   ),
 
                   const SizedBox(height: 24),
+                  
+                  // --- 4. DETAILS GRID ---
                   Row(children: [
                     Expanded(child: _buildInfoCard(Icons.attach_money, "Budget", widget.job['price'] ?? "₱${widget.job['budgetMin']} - ₱${widget.job['budgetMax']}")),
                     const SizedBox(width: 12),
@@ -253,13 +281,16 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                     const SizedBox(width: 12),
                     Expanded(child: _buildInfoCard(Icons.access_time, "Deadline", widget.job['duration'] ?? "3 days")),
                   ]),
+                  
                   const SizedBox(height: 30),
+                  
+                  // --- 5. DESCRIPTION ---
                   const Text("Description", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
                   Text(
+                    widget.job['description'] ?? 
                     "Looking for a skilled professional to help with complete ${widget.job['title'].toLowerCase()}. "
-                    "Must have experience with modern techniques. The job includes initial assessment, execution, and cleanup. "
-                    "Please apply if you are available immediately.",
+                    "Must have experience with modern techniques. The job includes initial assessment, execution, and cleanup.",
                     style: TextStyle(color: Colors.grey[600], height: 1.6, fontSize: 14),
                   ),
                 ],
@@ -267,7 +298,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
             ),
           ),
 
-          // Bottom Buttons
+          // --- 6. BOTTOM ACTION BUTTON ---
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: Colors.grey.shade100))),
@@ -285,21 +316,52 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                   ),
                 ),
                 const SizedBox(width: 16),
+                
+                // CONDITIONAL BUTTON LOGIC
                 Expanded(
-                  child: ElevatedButton(
-                    onPressed: (_isApplying || _hasApplied) ? null : _applyForJob,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: _hasApplied ? Colors.green : const Color(0xFF2E7EFF),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      disabledBackgroundColor: _hasApplied ? Colors.green.withOpacity(0.8) : Colors.grey[300],
-                      disabledForegroundColor: Colors.white,
-                    ),
-                    child: _isApplying
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : Text(_hasApplied ? "Applied" : "Apply Now", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  ),
+                  child: widget.isHired
+                    // CASE A: HIRED -> "Message Employer"
+                    ? ElevatedButton.icon(
+                        onPressed: () {
+                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Chat feature coming soon!")));
+                        },
+                        icon: const Icon(Icons.chat_bubble_outline),
+                        label: const Text("Message"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2E7EFF),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                      )
+                    : widget.isRejected
+                        // CASE B: REJECTED -> DISABLED "Rejected" (RED COLOR)
+                        ? ElevatedButton(
+                            onPressed: null, // Disabled
+                            style: ElevatedButton.styleFrom(
+                              disabledBackgroundColor: Colors.red[50], // Light Red Background
+                              disabledForegroundColor: Colors.red,     // Red Text
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                            child: const Text("Rejected", style: TextStyle(fontWeight: FontWeight.bold)), 
+                          )
+                        // CASE C: DEFAULT -> "Apply Now" or "Applied"
+                        : ElevatedButton(
+                            onPressed: (_isApplying || _hasApplied) ? null : _applyForJob,
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              backgroundColor: _hasApplied ? Colors.green : const Color(0xFF2E7EFF),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              disabledBackgroundColor: _hasApplied ? Colors.green.withOpacity(0.8) : Colors.grey[300],
+                              disabledForegroundColor: Colors.white,
+                            ),
+                            child: _isApplying
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : Text(_hasApplied ? "Applied" : "Apply Now", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
                 ),
               ],
             ),
