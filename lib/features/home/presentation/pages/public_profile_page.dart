@@ -1,11 +1,89 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-class PublicProfilePage extends StatelessWidget {
+class PublicProfilePage extends StatefulWidget {
   final String userId;
   final String userName;
+  final String? jobId; // Optional: Only exists if reviewing a specific application
 
-  const PublicProfilePage({super.key, required this.userId, required this.userName});
+  const PublicProfilePage({
+    super.key,
+    required this.userId,
+    required this.userName,
+    this.jobId,
+  });
+
+  @override
+  State<PublicProfilePage> createState() => _PublicProfilePageState();
+}
+
+class _PublicProfilePageState extends State<PublicProfilePage> {
+  bool _isLoading = false;
+
+  // --- ACTION: HIRE APPLICANT ---
+  Future<void> _hireApplicant() async {
+    setState(() => _isLoading = true);
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    try {
+      // 1. Update Applicant Stats
+      await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
+        'hiredCompleted': FieldValue.increment(1),
+      });
+
+      // 2. Notify Applicant
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'recipientId': widget.userId,
+        'title': 'Congratulations! You are Hired',
+        'message': "You have been hired by ${currentUser?.email?.split('@')[0] ?? 'Employer'} for this job.",
+        'read': false,
+        'timestamp': FieldValue.serverTimestamp(),
+        'type': 'hired',
+        'jobId': widget.jobId,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Applicant Hired Successfully!"), backgroundColor: Colors.green),
+        );
+        Navigator.pop(context); 
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- ACTION: REJECT APPLICANT ---
+  Future<void> _rejectApplicant() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // 1. Notify Applicant
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'recipientId': widget.userId,
+        'title': 'Application Update',
+        'message': "Your application was not selected for this position.",
+        'read': false,
+        'timestamp': FieldValue.serverTimestamp(),
+        'type': 'rejected',
+        'jobId': widget.jobId,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Applicant Rejected."), backgroundColor: Colors.black87),
+        );
+        Navigator.pop(context); 
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,41 +96,45 @@ class PublicProfilePage extends StatelessWidget {
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text("Employer Profile", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text("Profile", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert, color: Colors.black),
-            onPressed: () {},
-          )
+          IconButton(icon: const Icon(Icons.more_vert, color: Colors.black), onPressed: () {}),
         ],
       ),
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
+        stream: FirebaseFirestore.instance.collection('users').doc(widget.userId).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
           // Default Data
-          String displayName = userName;
-          String bio = "We are looking for skilled professionals for home renovation projects.";
-          String location = "Quezon City, Philippines";
+          String displayName = widget.userName;
+          String location = "Philippines";
+          String bio = "Skilled professional looking for opportunities.";
           String memberSince = "2024";
+          
+          String stat1 = "0"; // Applied
+          String stat2 = "0"; // Hired
+          String stat3 = "0.0"; // Rating
 
           if (snapshot.hasData && snapshot.data!.exists) {
             final data = snapshot.data!.data() as Map<String, dynamic>;
-            displayName = data['fullName'] ?? data['firstName'] ?? userName;
-            bio = data['bio'] ?? bio;
+            displayName = data['fullName'] ?? data['firstName'] ?? widget.userName;
             location = data['location'] ?? location;
-            // You can add a 'createdAt' field to your users later for real date
+            bio = data['bio'] ?? bio;
+
+            stat1 = data['appliedCount']?.toString() ?? "0";
+            stat2 = data['hiredCompleted']?.toString() ?? "0";
+            stat3 = data['rating']?.toString() ?? "0.0";
           }
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-                // 1. Avatar & Verification Badge
+                // 1. Avatar
                 Stack(
                   alignment: Alignment.bottomRight,
                   children: [
@@ -65,7 +147,7 @@ class PublicProfilePage extends StatelessWidget {
                       ),
                       child: Center(
                         child: Text(
-                          displayName.isNotEmpty ? displayName[0].toUpperCase() : "E",
+                          displayName.isNotEmpty ? displayName[0].toUpperCase() : "U",
                           style: const TextStyle(color: Colors.white, fontSize: 45, fontWeight: FontWeight.bold),
                         ),
                       ),
@@ -73,13 +155,13 @@ class PublicProfilePage extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(4),
                       decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                      child: const Icon(Icons.verified, color: Colors.blue, size: 28), // The "Blue Check"
+                      child: const Icon(Icons.verified, color: Colors.blue, size: 28),
                     )
                   ],
                 ),
-               
+                
                 const SizedBox(height: 16),
-               
+                
                 // 2. Name & Location
                 Text(displayName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
@@ -91,10 +173,10 @@ class PublicProfilePage extends StatelessWidget {
                     Text(location, style: TextStyle(color: Colors.grey[600])),
                   ],
                 ),
-               
+                
                 const SizedBox(height: 24),
 
-                // 3. Trust Badges Row (Static for now, builds trust)
+                // 3. Trust Badges
                 Container(
                   padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                   decoration: BoxDecoration(
@@ -119,16 +201,16 @@ class PublicProfilePage extends StatelessWidget {
                 ),
 
                 const SizedBox(height: 32),
-               
-                // 4. Employer Stats
+                
+                // 4. Stats
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildStatItem("12", "Jobs Posted"),
+                    _buildStatItem(stat1, "Applied"),
                     _buildContainerDivider(),
-                    _buildStatItem("8", "Hires Made"),
+                    _buildStatItem(stat2, "Hired"),
                     _buildContainerDivider(),
-                    _buildStatItem("4.8", "Rating"),
+                    _buildStatItem(stat3, "Rating"),
                   ],
                 ),
 
@@ -136,23 +218,17 @@ class PublicProfilePage extends StatelessWidget {
                 const Divider(),
                 const SizedBox(height: 24),
 
-                // 5. About Section
-                Align(alignment: Alignment.centerLeft, child: Text("About the Employer", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey[800]))),
+                // 5. About
+                Align(alignment: Alignment.centerLeft, child: Text("About", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey[800]))),
                 const SizedBox(height: 12),
-                Text(
-                  bio,
-                  style: TextStyle(color: Colors.grey[600], height: 1.6, fontSize: 15),
-                ),
-               
+                Text(bio, style: TextStyle(color: Colors.grey[600], height: 1.6, fontSize: 15)),
+                
                 const SizedBox(height: 24),
 
                 // 6. Member Since
                 Container(
                   padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[50],
-                    borderRadius: BorderRadius.circular(16),
-                  ),
+                  decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(16)),
                   child: Row(
                     children: [
                       const Icon(Icons.calendar_month, color: Colors.blue),
@@ -170,21 +246,60 @@ class PublicProfilePage extends StatelessWidget {
 
                 const SizedBox(height: 30),
 
-                // 7. Action Button
+                // 7. ACTION BUTTONS
+                
+                // A. SHOW HIRE/REJECT (Only if reviewing an application)
+                if (widget.jobId != null) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _isLoading ? null : _rejectApplicant,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            side: const BorderSide(color: Colors.red),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text("Reject", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _hireApplicant,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: _isLoading 
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text("Hire", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16), // Spacing between Hire/Reject and Contact
+                ],
+
+                // B. CONTACT BUTTON (ALWAYS VISIBLE)
                 SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: OutlinedButton.icon(
                     onPressed: () {
-                      // Logic to message employer could go here
+                      // Logic to chat/message
                     },
                     icon: const Icon(Icons.message_outlined),
-                    label: const Text("Contact Employer"),
+                    label: const Text("Contact"),
                     style: OutlinedButton.styleFrom(
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
-                )
+                ),
+                
+                const SizedBox(height: 20), // Bottom padding
               ],
             ),
           );

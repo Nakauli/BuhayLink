@@ -31,20 +31,11 @@ class NotificationsPage extends StatelessWidget {
                 }
 
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.notifications_none, size: 60, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text("No notifications yet", style: TextStyle(color: Colors.grey)),
-                      ],
-                    ),
-                  );
+                  return const Center(child: Text("No notifications yet", style: TextStyle(color: Colors.grey)));
                 }
 
-                // Client-side sort to fix missing index issue
                 final docs = snapshot.data!.docs;
+                // Client-side sort (Newest first)
                 docs.sort((a, b) {
                   Timestamp t1 = a['timestamp'] ?? Timestamp.now();
                   Timestamp t2 = b['timestamp'] ?? Timestamp.now();
@@ -57,11 +48,13 @@ class NotificationsPage extends StatelessWidget {
                   separatorBuilder: (context, index) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final data = docs[index].data() as Map<String, dynamic>;
+                    
+                    // --- GET THE DATA ---
                     final String applicantId = data['applicantId'] ?? "";
+                    final String? jobId = data['jobId']; // Get the Job ID
                     final bool isRead = data['read'] ?? false;
 
                     return GestureDetector(
-                      // --- KEY CHANGE HERE ---
                       onTap: () async {
                         // 1. Mark as read
                         await FirebaseFirestore.instance
@@ -70,45 +63,26 @@ class NotificationsPage extends StatelessWidget {
                             .update({'read': true});
 
                         if (applicantId.isNotEmpty) {
-                          // 2. SHOW LOADING (Optional UX improvement)
-                          showDialog(
-                            context: context, 
-                            barrierDismissible: false,
-                            builder: (c) => const Center(child: CircularProgressIndicator())
-                          );
-
-                          // 3. FETCH REAL NAME FROM DATABASE
-                          String finalName = "Applicant"; // Default
+                          // 2. FETCH NAME & NAVIGATE
+                          String finalName = "Applicant";
                           try {
-                            DocumentSnapshot userDoc = await FirebaseFirestore.instance
-                                .collection('users')
-                                .doc(applicantId)
-                                .get();
-                            
+                            DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(applicantId).get();
                             if (userDoc.exists) {
                               final userData = userDoc.data() as Map<String, dynamic>;
-                              // Prioritize Full Name > First Name > Username
-                              if (userData['fullName'] != null && userData['fullName'].toString().isNotEmpty) {
-                                finalName = userData['fullName'];
-                              } else if (userData['firstName'] != null) {
-                                finalName = userData['firstName'];
-                              } else if (userData['username'] != null) {
-                                finalName = userData['username'];
-                              }
+                              finalName = userData['fullName'] ?? userData['firstName'] ?? userData['username'] ?? "Applicant";
                             }
                           } catch (e) {
                             debugPrint("Error fetching name: $e");
                           }
 
-                          // 4. CLOSE LOADING & NAVIGATE
                           if (context.mounted) {
-                            Navigator.pop(context); // Close loading dialog
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => PublicProfilePage(
                                   userId: applicantId,
-                                  userName: finalName, // <--- PASSES REAL NAME NOW
+                                  userName: finalName,
+                                  jobId: jobId, // <--- IMPORTANT: PASS THE JOB ID HERE
                                 ),
                               ),
                             );
@@ -121,12 +95,8 @@ class NotificationsPage extends StatelessWidget {
                           color: isRead ? Colors.white : Colors.blue[50], 
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: Colors.grey.shade200),
-                          boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 5, offset: const Offset(0, 2))
-                          ],
                         ),
                         child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const CircleAvatar(
                               backgroundColor: Color(0xFF2E7EFF),
@@ -138,25 +108,13 @@ class NotificationsPage extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    data['title'] ?? "Notification",
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                  ),
+                                  Text(data['title'] ?? "Notification", style: const TextStyle(fontWeight: FontWeight.bold)),
                                   const SizedBox(height: 4),
-                                  Text(
-                                    data['message'] ?? "",
-                                    style: TextStyle(color: Colors.grey[700], fontSize: 13, height: 1.3),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    "Tap to view profile",
-                                    style: TextStyle(color: Colors.blue[700], fontSize: 11, fontWeight: FontWeight.w600),
-                                  ),
+                                  Text(data['message'] ?? "", style: TextStyle(color: Colors.grey[700], fontSize: 13)),
                                 ],
                               ),
                             ),
-                            if (!isRead)
-                              const CircleAvatar(radius: 5, backgroundColor: Colors.red),
+                            if (!isRead) const CircleAvatar(radius: 5, backgroundColor: Colors.red),
                           ],
                         ),
                       ),
