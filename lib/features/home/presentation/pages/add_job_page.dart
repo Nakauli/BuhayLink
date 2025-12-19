@@ -33,23 +33,16 @@ class _AddJobPageState extends State<AddJobPage> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
 
-      // --- 1. DETERMINE THE POSTER NAME ---
+      // 1. Get Poster Name
       String posterName = "Employer"; 
-      
-      // A. Try to get name from Firestore Profile
       final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       if (userDoc.exists) {
         final data = userDoc.data();
-        posterName = data?['fullName'] ?? data?['firstName'] ?? data?['username'] ?? "";
+        posterName = data?['fullName'] ?? data?['firstName'] ?? data?['username'] ?? user.email!.split('@')[0];
       }
 
-      // B. If Firestore failed (empty or "Employer"), use Email Nickname
-      if (posterName.isEmpty || posterName == "Employer") {
-        posterName = user.email!.split('@')[0]; // "aljuncursiga" from "aljuncursiga@gmail.com"
-      }
-
-      // --- 2. SAVE JOB TO FIREBASE ---
-      await FirebaseFirestore.instance.collection('jobs').add({
+      // 2. SAVE JOB TO FIREBASE
+      DocumentReference jobRef = await FirebaseFirestore.instance.collection('jobs').add({
         'title': _titleController.text.trim(),
         'description': _descController.text.trim(),
         'category': _selectedCategory,
@@ -59,15 +52,28 @@ class _AddJobPageState extends State<AddJobPage> {
         'duration': _durationController.text.trim(),
         'isUrgent': _isUrgent,
         'postedBy': user.uid,
-        'posterName': posterName, // <--- This will now save "aljuncursiga" guaranteed
+        'posterName': posterName,
         'posterRating': 0.0,
         'applicants': 0,
         'postedAt': FieldValue.serverTimestamp(),
         'status': 'open',
       });
 
+      // 3. SEND NOTIFICATION TO 'ALL' (This enables the alert!)
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'recipientId': 'all',          // <--- Send to everyone
+        'title': 'New Job Opportunity',
+        'message': "New job posted: ${_titleController.text.trim()}",
+        'type': 'new_post',            // <--- Type we filter for
+        'jobId': jobRef.id,
+        'posterId': user.uid,          // <--- So you don't notify yourself
+        'timestamp': FieldValue.serverTimestamp(),
+        'read': false,
+      });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Job Posted Successfully!"), backgroundColor: Colors.green));
+        
         // Reset form
         _titleController.clear();
         _descController.clear();
@@ -78,10 +84,10 @@ class _AddJobPageState extends State<AddJobPage> {
         setState(() => _isUrgent = false);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
     }
 
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override

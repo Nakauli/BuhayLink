@@ -7,7 +7,7 @@ import 'messages_page.dart';
 import 'search_page.dart'; 
 import 'notifications_page.dart';
 import 'job_details_page.dart';
-import 'applied_jobs_page.dart'; // <--- IMPORT THE NEW PAGE
+import 'applied_jobs_page.dart'; 
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -18,7 +18,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   int _selectedIndex = 0;
-  bool _showMyPosts = false;
+  bool _showMyPosts = false; // false = Find Jobs (Applicant), true = My Posts (Employer)
   String _selectedFilter = "All"; 
   String _searchQuery = "";       
 
@@ -29,7 +29,6 @@ class _DashboardPageState extends State<DashboardPage> {
       body: _selectedIndex == 0 
           ? _buildHomeWithHeader() 
           : _getBodyContent(),
-      
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) => setState(() => _selectedIndex = index),
@@ -96,16 +95,54 @@ class _DashboardPageState extends State<DashboardPage> {
                     ],
                   ),
                   
-                  // Notification Bell
+                  // --- SPECIFIC NOTIFICATION BELL ---
                   GestureDetector(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsPage())),
+                    onTap: () {
+                       // Pass the current mode (_showMyPosts) to the Notifications Page
+                       Navigator.push(
+                         context, 
+                         MaterialPageRoute(
+                           builder: (context) => NotificationsPage(
+                             isEmployerMode: _showMyPosts 
+                           )
+                         )
+                       );
+                    },
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
                       child: StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance.collection('notifications').where('recipientId', isEqualTo: uid).where('read', isEqualTo: false).snapshots(),
+                        // 1. Listen to ALL relevant notifications (Personal + Global)
+                        stream: FirebaseFirestore.instance
+                            .collection('notifications')
+                            .where('recipientId', whereIn: [uid, 'all'])
+                            .snapshots(),
                         builder: (context, snapshot) {
-                          int unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                          int unreadCount = 0;
+
+                          if (snapshot.hasData) {
+                            // 2. Filter Client-Side based on Mode
+                            unreadCount = snapshot.data!.docs.where((doc) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              
+                              // Check Read Status
+                              if (data['read'] == true) return false;
+
+                              final String type = data['type'] ?? 'application';
+                              final String posterId = data['posterId'] ?? "";
+
+                              if (_showMyPosts) {
+                                // EMPLOYER MODE: Only count 'application' (New Applicant)
+                                return type == 'application';
+                              } else {
+                                // APPLICANT MODE: Only count 'hired', 'rejected', 'new_post'
+                                // (And ignore new_post if *I* was the one who posted it)
+                                if (type == 'new_post') return posterId != uid;
+                                return ['hired', 'rejected'].contains(type);
+                              }
+                            }).length;
+                          }
+
                           return Stack(
                             clipBehavior: Clip.none,
                             children: [
@@ -116,7 +153,10 @@ class _DashboardPageState extends State<DashboardPage> {
                                   child: Container(
                                     padding: const EdgeInsets.all(4),
                                     decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                    child: Text(unreadCount > 9 ? "9+" : unreadCount.toString(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    child: Text(
+                                      unreadCount > 9 ? "9+" : unreadCount.toString(), 
+                                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)
+                                    ),
                                   ),
                                 ),
                             ],
@@ -142,7 +182,7 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
               const SizedBox(height: 24),
 
-              // THE 4 STATS BOXES SECTION
+              // THE 4 STATS BOXES
               StreamBuilder<DocumentSnapshot>(
                 stream: uid != null ? FirebaseFirestore.instance.collection('users').doc(uid).snapshots() : null,
                 builder: (context, snapshot) {
@@ -150,24 +190,9 @@ class _DashboardPageState extends State<DashboardPage> {
                   return Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // 1. APPLIED (NOW CLICKABLE)
-                      _buildStatCard(
-                        data?['appliedCount']?.toString() ?? "0", 
-                        "Applied", 
-                        Icons.assignment_turned_in_rounded,
-                        onTap: () {
-                          // Navigate to the new Applied Jobs page
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => const AppliedJobsPage()));
-                        }
-                      ),
-                      
-                      // 2. Hired
+                      _buildStatCard(data?['appliedCount']?.toString() ?? "0", "Applied", Icons.assignment_turned_in_rounded, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AppliedJobsPage()))),
                       _buildStatCard(data?['hiredCompleted']?.toString() ?? "0", "Hired", Icons.handshake_rounded),
-                      
-                      // 3. Ratings
                       _buildStatCard(data?['rating']?.toString() ?? "0.0", "Ratings", Icons.star_rounded),
-                      
-                      // 4. Saved
                       _buildStatCard(data?['savedCount']?.toString() ?? "0", "Saved", Icons.bookmark_rounded),
                     ],
                   );
@@ -177,7 +202,7 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
 
-        // B. SEARCH BAR
+        // REST OF THE DASHBOARD (Search, Filter, List)
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: TextField(
@@ -194,7 +219,6 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
 
-        // C. FILTER ROW
         if (!_showMyPosts)
           SizedBox(
             height: 40,
@@ -215,13 +239,11 @@ class _DashboardPageState extends State<DashboardPage> {
 
         const SizedBox(height: 16),
 
-        // D. LIVE FIREBASE LIST
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: _showMyPosts 
               ? FirebaseFirestore.instance.collection('jobs').where('postedBy', isEqualTo: FirebaseAuth.instance.currentUser?.uid).orderBy('postedAt', descending: true).snapshots()
               : FirebaseFirestore.instance.collection('jobs').orderBy('postedAt', descending: true).snapshots(),
-            
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -280,8 +302,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- HELPERS ---
-  
+  // --- HELPERS (Copied from your previous code) ---
   Widget _getBodyContent() {
     switch (_selectedIndex) {
       case 1: return const SearchPage();
@@ -303,43 +324,22 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // UPDATED HELPER TO ACCEPT ONTAP
   Widget _buildStatCard(String value, String label, IconData icon, {VoidCallback? onTap}) {
     double boxWidth = (MediaQuery.of(context).size.width - 64) / 4; 
-
     return GestureDetector(
-      onTap: onTap, // Add click functionality
+      onTap: onTap,
       child: Container(
         width: boxWidth,
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.2)),
-        ),
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.2))),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, color: Colors.white, size: 20),
             const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
+            Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
             const SizedBox(height: 2),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 9,
-                color: Colors.white.withOpacity(0.7),
-                height: 1.1,
-              ),
-            ),
+            Text(label, textAlign: TextAlign.center, style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.7), height: 1.1)),
           ],
         ),
       ),
@@ -362,12 +362,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildJobCard(Map<String, dynamic> job) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5))],
-        border: Border.all(color: Colors.grey.shade100),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5))], border: Border.all(color: Colors.grey.shade100)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -376,12 +371,7 @@ class _DashboardPageState extends State<DashboardPage> {
             children: [
               Expanded(child: Text(job['title'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, height: 1.3, color: Colors.black87))),
               if (job['isUrgent'])
-                Container(
-                  margin: const EdgeInsets.only(left: 12),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(20)),
-                  child: Row(children: [Icon(Icons.access_time_filled, size: 14, color: Colors.red[400]), const SizedBox(width: 6), Text("Urgent", style: TextStyle(color: Colors.red[400], fontSize: 11, fontWeight: FontWeight.w700))]),
-                ),
+                Container(margin: const EdgeInsets.only(left: 12), padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(20)), child: Row(children: [Icon(Icons.access_time_filled, size: 14, color: Colors.red[400]), const SizedBox(width: 6), Text("Urgent", style: TextStyle(color: Colors.red[400], fontSize: 11, fontWeight: FontWeight.w700))])),
               const SizedBox(width: 12),
               Icon(Icons.bookmark_border_rounded, color: Colors.grey[400], size: 26),
             ],
@@ -389,87 +379,39 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(height: 12),
           Text("Looking for a skilled professional to help with this project.", style: TextStyle(color: Colors.grey[600], fontSize: 13, height: 1.4), maxLines: 2, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(12)),
-            child: Text(job['tag'].toString(), style: TextStyle(color: Colors.blue[700], fontSize: 12, fontWeight: FontWeight.w600)),
-          ),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(12)), child: Text(job['tag'].toString(), style: TextStyle(color: Colors.blue[700], fontSize: 12, fontWeight: FontWeight.w600))),
           const SizedBox(height: 20),
           const Divider(height: 1, color: Colors.black12),
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(
-                flex: 1,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildInfoItem(Icons.payments_outlined, job['price'], isPrimary: true),
-                    const SizedBox(height: 12),
-                    _buildInfoItem(Icons.location_on_outlined, job['location']),
-                  ],
-                ),
-              ),
-              Expanded(
-                flex: 1,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildInfoItem(Icons.schedule_outlined, job['duration']), 
-                    const SizedBox(height: 12),
-                    _buildInfoItem(Icons.people_outline_rounded, job['applicants']), 
-                  ],
-                ),
-              ),
+              Expanded(flex: 1, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildInfoItem(Icons.payments_outlined, job['price'], isPrimary: true), const SizedBox(height: 12), _buildInfoItem(Icons.location_on_outlined, job['location'])])),
+              Expanded(flex: 1, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildInfoItem(Icons.schedule_outlined, job['duration']), const SizedBox(height: 12), _buildInfoItem(Icons.people_outline_rounded, job['applicants'])])),
             ],
           ),
           const SizedBox(height: 16),
-          
           StreamBuilder<DocumentSnapshot>(
-            stream: job['posterId'] != null 
-              ? FirebaseFirestore.instance.collection('users').doc(job['posterId']).snapshots() 
-              : null,
+            stream: job['posterId'] != null ? FirebaseFirestore.instance.collection('users').doc(job['posterId']).snapshots() : null,
             builder: (context, snapshot) {
               String name = "Employer";
-              if (job['user'] != null && job['user'] != "Employer") {
-                  name = job['user'];
-              }
+              if (job['user'] != null && job['user'] != "Employer") name = job['user'];
               final currentUser = FirebaseAuth.instance.currentUser;
-              if (name == "Employer" && job['posterId'] == currentUser?.uid) {
-                  name = currentUser?.email?.split('@')[0] ?? "Me";
-              }
+              if (name == "Employer" && job['posterId'] == currentUser?.uid) name = currentUser?.email?.split('@')[0] ?? "Me";
               if (snapshot.hasData && snapshot.data!.exists) {
                 final userData = snapshot.data!.data() as Map<String, dynamic>?;
                 if (userData != null) {
                    String? fetchedName = userData['fullName'] ?? userData['firstName'] ?? userData['username'];
-                   if (fetchedName != null && fetchedName.isNotEmpty) {
-                     name = fetchedName;
-                   }
+                   if (fetchedName != null && fetchedName.isNotEmpty) name = fetchedName;
                 }
               }
               String firstLetter = name.isNotEmpty ? name[0].toUpperCase() : "E";
               return Row(
                 children: [
-                  Container(
-                    width: 40, height: 40,
-                    decoration: BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [Colors.blue.shade300, Colors.purple.shade300])),
-                    child: Center(child: Text(firstLetter, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))),
-                  ),
+                  Container(width: 40, height: 40, decoration: BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [Colors.blue.shade300, Colors.purple.shade300])), child: Center(child: Text(firstLetter, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)))),
                   const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(name, style: const TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 2),
-                      Row(children: [const Icon(Icons.star_rounded, size: 16, color: Colors.amber), const SizedBox(width: 4), Text(job['rating'], style: TextStyle(color: Colors.grey[700], fontSize: 12, fontWeight: FontWeight.w600))]),
-                    ],
-                  ),
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.w700)), const SizedBox(height: 2), Row(children: [const Icon(Icons.star_rounded, size: 16, color: Colors.amber), const SizedBox(width: 4), Text(job['rating'], style: TextStyle(color: Colors.grey[700], fontSize: 12, fontWeight: FontWeight.w600))])]),
                   const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(20)),
-                    child: Text("Open", style: TextStyle(color: Colors.green[700], fontSize: 13, fontWeight: FontWeight.w700)),
-                  )
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8), decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(20)), child: Text("Open", style: TextStyle(color: Colors.green[700], fontSize: 13, fontWeight: FontWeight.w700)))
                 ],
               );
             }
@@ -480,13 +422,6 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildInfoItem(IconData icon, String text, {bool isPrimary = false}) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 18, color: isPrimary ? const Color(0xFF2E7EFF) : Colors.grey[400]),
-        const SizedBox(width: 8),
-        Flexible(child: Text(text, style: TextStyle(color: isPrimary ? Colors.black87 : Colors.grey[600], fontSize: 13, fontWeight: isPrimary ? FontWeight.w700 : FontWeight.w500), overflow: TextOverflow.ellipsis)),
-      ],
-    );
+    return Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 18, color: isPrimary ? const Color(0xFF2E7EFF) : Colors.grey[400]), const SizedBox(width: 8), Flexible(child: Text(text, style: TextStyle(color: isPrimary ? Colors.black87 : Colors.grey[600], fontSize: 13, fontWeight: isPrimary ? FontWeight.w700 : FontWeight.w500), overflow: TextOverflow.ellipsis))]);
   }
 }
