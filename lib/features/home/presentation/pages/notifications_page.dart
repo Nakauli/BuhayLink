@@ -21,8 +21,6 @@ class NotificationsPage extends StatelessWidget {
       body: uid == null
           ? const Center(child: Text("Please login."))
           : StreamBuilder<QuerySnapshot>(
-              // FIX: Removed .orderBy('timestamp') to fix the empty list issue
-              // The badge works because it doesn't use orderBy. 
               stream: FirebaseFirestore.instance
                   .collection('notifications')
                   .where('recipientId', isEqualTo: uid)
@@ -45,12 +43,12 @@ class NotificationsPage extends StatelessWidget {
                   );
                 }
 
-                // Manually sort the data here since we removed it from the query
+                // Client-side sort to fix missing index issue
                 final docs = snapshot.data!.docs;
                 docs.sort((a, b) {
                   Timestamp t1 = a['timestamp'] ?? Timestamp.now();
                   Timestamp t2 = b['timestamp'] ?? Timestamp.now();
-                  return t2.compareTo(t1); // Descending order (newest first)
+                  return t2.compareTo(t1); 
                 });
 
                 return ListView.separated(
@@ -63,24 +61,58 @@ class NotificationsPage extends StatelessWidget {
                     final bool isRead = data['read'] ?? false;
 
                     return GestureDetector(
+                      // --- KEY CHANGE HERE ---
                       onTap: () async {
-                        // Mark as read
+                        // 1. Mark as read
                         await FirebaseFirestore.instance
                             .collection('notifications')
                             .doc(docs[index].id)
                             .update({'read': true});
 
-                        // Navigate to Applicant Profile
                         if (applicantId.isNotEmpty) {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => PublicProfilePage(
-                                userId: applicantId,
-                                userName: "Applicant", 
-                              ),
-                            ),
+                          // 2. SHOW LOADING (Optional UX improvement)
+                          showDialog(
+                            context: context, 
+                            barrierDismissible: false,
+                            builder: (c) => const Center(child: CircularProgressIndicator())
                           );
+
+                          // 3. FETCH REAL NAME FROM DATABASE
+                          String finalName = "Applicant"; // Default
+                          try {
+                            DocumentSnapshot userDoc = await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(applicantId)
+                                .get();
+                            
+                            if (userDoc.exists) {
+                              final userData = userDoc.data() as Map<String, dynamic>;
+                              // Prioritize Full Name > First Name > Username
+                              if (userData['fullName'] != null && userData['fullName'].toString().isNotEmpty) {
+                                finalName = userData['fullName'];
+                              } else if (userData['firstName'] != null) {
+                                finalName = userData['firstName'];
+                              } else if (userData['username'] != null) {
+                                finalName = userData['username'];
+                              }
+                            }
+                          } catch (e) {
+                            debugPrint("Error fetching name: $e");
+                          }
+
+                          // 4. CLOSE LOADING & NAVIGATE
+                          if (context.mounted) {
+                            Navigator.pop(context); // Close loading dialog
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => PublicProfilePage(
+                                  userId: applicantId,
+                                  userName: finalName, // <--- PASSES REAL NAME NOW
+                                ),
+                              ),
+                            );
+                          }
                         }
                       },
                       child: Container(
@@ -112,7 +144,7 @@ class NotificationsPage extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    data['message'] ?? "Someone applied to your job",
+                                    data['message'] ?? "",
                                     style: TextStyle(color: Colors.grey[700], fontSize: 13, height: 1.3),
                                   ),
                                   const SizedBox(height: 6),
