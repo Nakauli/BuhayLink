@@ -5,15 +5,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 class PublicProfilePage extends StatefulWidget {
   final String userId;
   final String userName;
-  final String? jobId; // Optional: Only exists if reviewing a specific application
-  final String? jobTitle; // <--- NEW: The title of the job they applied for
+  final String? jobId; 
+  final String? jobTitle; 
 
   const PublicProfilePage({
     super.key,
     required this.userId,
     required this.userName,
     this.jobId,
-    this.jobTitle, // <--- Add to constructor
+    this.jobTitle,
   });
 
   @override
@@ -22,34 +22,90 @@ class PublicProfilePage extends StatefulWidget {
 
 class _PublicProfilePageState extends State<PublicProfilePage> {
   bool _isLoading = false;
+  String? _decisionStatus; 
 
-  // --- ACTION: HIRE APPLICANT ---
+  @override
+  void initState() {
+    super.initState();
+    if (widget.jobId != null) {
+      _checkExistingDecision();
+    }
+  }
+
+  Future<void> _checkExistingDecision() async {
+    try {
+      final query = await FirebaseFirestore.instance
+          .collection('notifications')
+          .where('jobId', isEqualTo: widget.jobId)
+          .where('recipientId', isEqualTo: widget.userId)
+          .where('type', whereIn: ['hired', 'rejected'])
+          .get();
+
+      if (query.docs.isNotEmpty && mounted) {
+        final data = query.docs.first.data();
+        setState(() {
+          _decisionStatus = data['type']; 
+        });
+      }
+    } catch (e) {
+      debugPrint("Error checking decision: $e");
+    }
+  }
+
+  // --- ACTION: HIRE APPLICANT (UPDATED WITH NAME FETCHING) ---
   Future<void> _hireApplicant() async {
     setState(() => _isLoading = true);
     final currentUser = FirebaseAuth.instance.currentUser;
 
+    if (currentUser == null) return;
+
     try {
-      // 1. Update Applicant Stats
+      // 1. FETCH EMPLOYER REAL NAME
+      String employerName = "Employer";
+      try {
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
+        if (userDoc.exists) {
+          final data = userDoc.data() as Map<String, dynamic>;
+          // Priority: fullName -> firstName+lastName -> username -> email
+          if (data['fullName'] != null && data['fullName'].toString().isNotEmpty) {
+            employerName = data['fullName'];
+          } else if (data['firstName'] != null) {
+            employerName = "${data['firstName']} ${data['lastName'] ?? ''}".trim();
+          } else if (data['username'] != null) {
+            employerName = data['username'];
+          } else {
+             employerName = currentUser.email?.split('@')[0] ?? "Employer";
+          }
+        }
+      } catch (e) {
+        debugPrint("Error fetching employer name: $e");
+        employerName = currentUser.email?.split('@')[0] ?? "Employer";
+      }
+
+      // 2. Update Applicant Stats
       await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
         'hiredCompleted': FieldValue.increment(1),
       });
 
-      // 2. Notify Applicant
+      // 3. Notify Applicant (USING EMPLOYER NAME)
       await FirebaseFirestore.instance.collection('notifications').add({
         'recipientId': widget.userId,
         'title': 'Congratulations! You are Hired',
-        'message': "You have been hired by ${currentUser?.email?.split('@')[0] ?? 'Employer'} for the position: ${widget.jobTitle ?? 'Job'}.",
+        // CHANGED HERE: Uses employerName instead of email
+        'message': "You have been hired by $employerName for the position: ${widget.jobTitle ?? 'Job'}.",
         'read': false,
         'timestamp': FieldValue.serverTimestamp(),
-        'type': 'hired',
+        'type': 'hired', 
         'jobId': widget.jobId,
       });
 
       if (mounted) {
+        setState(() {
+          _decisionStatus = 'hired'; 
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Applicant Hired Successfully!"), backgroundColor: Colors.green),
         );
-        Navigator.pop(context); 
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
@@ -63,22 +119,23 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Notify Applicant
       await FirebaseFirestore.instance.collection('notifications').add({
         'recipientId': widget.userId,
         'title': 'Application Update',
         'message': "Your application for ${widget.jobTitle ?? 'the position'} was not selected.",
         'read': false,
         'timestamp': FieldValue.serverTimestamp(),
-        'type': 'rejected',
+        'type': 'rejected', 
         'jobId': widget.jobId,
       });
 
       if (mounted) {
+        setState(() {
+          _decisionStatus = 'rejected'; 
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Applicant Rejected."), backgroundColor: Colors.black87),
         );
-        Navigator.pop(context); 
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
@@ -111,15 +168,14 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          // Default Data
           String displayName = widget.userName;
           String location = "Philippines";
           String bio = "Skilled professional looking for opportunities.";
           String memberSince = "2024";
           
-          String stat1 = "0"; // Applied
-          String stat2 = "0"; // Hired
-          String stat3 = "0.0"; // Rating
+          String stat1 = "0"; 
+          String stat2 = "0"; 
+          String stat3 = "0.0"; 
 
           if (snapshot.hasData && snapshot.data!.exists) {
             final data = snapshot.data!.data() as Map<String, dynamic>;
@@ -136,7 +192,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
             padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-                // 1. Avatar
+                // Avatar
                 Stack(
                   alignment: Alignment.bottomRight,
                   children: [
@@ -163,8 +219,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                 ),
                 
                 const SizedBox(height: 16),
-                
-                // 2. Name & Location
                 Text(displayName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Row(
@@ -178,7 +232,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                 
                 const SizedBox(height: 24),
 
-                // 3. Trust Badges
+                // Trust Badges
                 Container(
                   padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                   decoration: BoxDecoration(
@@ -204,7 +258,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 
                 const SizedBox(height: 32),
                 
-                // 4. Stats
+                // Stats
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
@@ -220,14 +274,14 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                 const Divider(),
                 const SizedBox(height: 24),
 
-                // 5. About
+                // About
                 Align(alignment: Alignment.centerLeft, child: Text("About", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey[800]))),
                 const SizedBox(height: 12),
                 Text(bio, style: TextStyle(color: Colors.grey[600], height: 1.6, fontSize: 15)),
                 
                 const SizedBox(height: 24),
 
-                // 6. Member Since
+                // Member Since
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(16)),
@@ -248,7 +302,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 
                 const SizedBox(height: 30),
 
-                // --- 7. JOB CONTEXT SECTION (NEW) ---
+                // Job Context
                 if (widget.jobTitle != null)
                   Container(
                     margin: const EdgeInsets.only(bottom: 24),
@@ -275,10 +329,44 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                     ),
                   ),
 
-                // --- 8. ACTION BUTTONS ---
+                // --- CONDITIONAL ACTION BUTTONS ---
                 
-                // A. SHOW HIRE/REJECT (Only if reviewing an application)
-                if (widget.jobId != null) ...[
+                // IF DECISION ALREADY MADE (HIRED OR REJECTED)
+                if (_decisionStatus != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: _decisionStatus == 'hired' ? Colors.green[50] : Colors.red[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _decisionStatus == 'hired' ? Colors.green : Colors.red,
+                        width: 1.5
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _decisionStatus == 'hired' ? Icons.check_circle : Icons.cancel,
+                          color: _decisionStatus == 'hired' ? Colors.green : Colors.red,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _decisionStatus == 'hired' ? "Applicant Hired" : "Applicant Rejected",
+                          style: TextStyle(
+                            color: _decisionStatus == 'hired' ? Colors.green[800] : Colors.red[800],
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                
+                // ELSE IF STILL PENDING (SHOW BUTTONS)
+                else if (widget.jobId != null) ...[
                   Row(
                     children: [
                       Expanded(
@@ -309,17 +397,15 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16), // Spacing between Hire/Reject and Contact
+                  const SizedBox(height: 16),
                 ],
 
-                // B. CONTACT BUTTON (ALWAYS VISIBLE)
+                // Contact Button
                 SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: OutlinedButton.icon(
-                    onPressed: () {
-                      // Logic to chat/message
-                    },
+                    onPressed: () {},
                     icon: const Icon(Icons.message_outlined),
                     label: const Text("Contact"),
                     style: OutlinedButton.styleFrom(
@@ -328,7 +414,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                   ),
                 ),
                 
-                const SizedBox(height: 20), // Bottom padding
+                const SizedBox(height: 20), 
               ],
             ),
           );

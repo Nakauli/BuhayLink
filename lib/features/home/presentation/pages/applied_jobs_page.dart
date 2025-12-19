@@ -1,22 +1,69 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'job_details_page.dart'; // Import JobDetailsPage
+import 'job_details_page.dart'; 
 
-class AppliedJobsPage extends StatelessWidget {
+class AppliedJobsPage extends StatefulWidget {
   const AppliedJobsPage({super.key});
+
+  @override
+  State<AppliedJobsPage> createState() => _AppliedJobsPageState();
+}
+
+class _AppliedJobsPageState extends State<AppliedJobsPage> {
+
+  @override
+  void initState() {
+    super.initState();
+    // AUTOMATICALLY FIX THE COUNTER WHEN PAGE LOADS
+    _syncApplicationCount();
+  }
+
+  /// This function counts your REAL applications and updates the "9" to the correct number.
+  Future<void> _syncApplicationCount() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    try {
+      // 1. Count how many items are ACTUALLY in the list
+      final query = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('applications')
+          .count() // Efficient counting
+          .get();
+
+      final int actualCount = query.count ?? 0;
+
+      // 2. Force the User Profile to match the Real Count
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .update({'appliedCount': actualCount});
+      
+      // debugPrint("Synced count to: $actualCount");
+    } catch (e) {
+      debugPrint("Error syncing count: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: const BackButton(color: Colors.black),
-        title: const Text("Applied Jobs", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          "Applied Jobs", 
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)
+        ),
       ),
       body: uid == null
           ? const Center(child: Text("Please login."))
@@ -33,26 +80,127 @@ class AppliedJobsPage extends StatelessWidget {
                 }
 
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  // If list is empty, run sync again just to be safe
+                  if (snapshot.connectionState == ConnectionState.active) {
+                     _syncApplicationCount(); 
+                  }
+                  
                   return const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.assignment_outlined, size: 60, color: Colors.grey),
                         SizedBox(height: 16),
-                        Text("No applications found.", style: TextStyle(color: Colors.grey)),
+                        Text("You haven't applied to any jobs yet.", style: TextStyle(color: Colors.grey)),
                       ],
                     ),
                   );
                 }
 
+                final docs = snapshot.data!.docs;
+
                 return ListView.separated(
-                  padding: const EdgeInsets.all(20),
-                  itemCount: snapshot.data!.docs.length,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: docs.length,
                   separatorBuilder: (context, index) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
-                    final data = snapshot.data!.docs[index].data() as Map<String, dynamic>;
-                    // Pass the context to handle navigation
-                    return _buildApplicationCard(context, data);
+                    final doc = docs[index];
+                    final data = doc.data() as Map<String, dynamic>;
+                    final String jobId = data['jobId'] ?? "";
+                    
+                    return Dismissible(
+                      key: Key(doc.id), 
+                      direction: DismissDirection.endToStart, 
+                      
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Icon(Icons.delete, color: Colors.white, size: 30),
+                      ),
+                      
+                      onDismissed: (direction) async {
+                        // 1. Delete from list
+                        await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(uid)
+                            .collection('applications')
+                            .doc(doc.id)
+                            .delete();
+                        
+                        // 2. Subtract 1 from the counter immediately
+                        await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(uid)
+                            .update({
+                              'appliedCount': FieldValue.increment(-1)
+                            });
+                      },
+
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.grey.shade200),
+                          boxShadow: [
+                             BoxShadow(color: Colors.grey.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+                          ]
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 50, height: 50,
+                              decoration: BoxDecoration(
+                                color: Colors.blue[50],
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(Icons.work, color: Color(0xFF2E7EFF)),
+                            ),
+                            const SizedBox(width: 16),
+                            
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    data['title'] ?? "Unknown Job", 
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                    maxLines: 1, 
+                                    overflow: TextOverflow.ellipsis
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    data['price'] ?? "₱0", 
+                                    style: TextStyle(color: Colors.grey[500], fontSize: 13, fontWeight: FontWeight.w500)
+                                  ),
+                                ],
+                              ),
+                            ),
+                            
+                            TextButton(
+                              onPressed: () {
+                                if (jobId.isNotEmpty) {
+                                  _navigateToJob(context, jobId);
+                                }
+                              },
+                              style: TextButton.styleFrom(
+                                backgroundColor: Colors.green[50],
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              ),
+                              child: Text(
+                                "View", 
+                                style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.bold, fontSize: 12)
+                              ),
+                            )
+                          ],
+                        ),
+                      ),
+                    );
                   },
                 );
               },
@@ -60,69 +208,40 @@ class AppliedJobsPage extends StatelessWidget {
     );
   }
 
-  Widget _buildApplicationCard(BuildContext context, Map<String, dynamic> data) {
-    return GestureDetector(
-      onTap: () async {
-        // 1. Get the Job ID from the saved application data
-        String jobId = data['jobId'];
+  void _navigateToJob(BuildContext context, String jobId) async {
+    try {
+      DocumentSnapshot jobDoc = await FirebaseFirestore.instance.collection('jobs').doc(jobId).get();
+      if (jobDoc.exists && context.mounted) {
+         final jobData = jobDoc.data() as Map<String, dynamic>;
+         
+         final Map<String, dynamic> jobMap = {
+            "title": jobData['title'] ?? "Job",
+            "tag": jobData['category'] ?? "General",
+            "price": "₱${jobData['budgetMin']} - ₱${jobData['budgetMax']}",
+            "location": jobData['location'] ?? "Remote",
+            "user": jobData['posterName'] ?? "Employer",
+            "posterId": jobData['postedBy'],
+            "rating": "New", 
+            "applicants": "${jobData['applicants'] ?? 0} applicants",
+            "duration": "3 days",
+            "isUrgent": jobData['isUrgent'] ?? false,
+            "description": jobData['description'] ?? "No description available.",
+         };
 
-        // 2. Fetch the FULL job details from the 'jobs' collection
-        // We need this because the 'applications' list only stores the title/price,
-        // but the Details Page needs the description, posterId, etc.
-        try {
-          DocumentSnapshot jobDoc = await FirebaseFirestore.instance.collection('jobs').doc(jobId).get();
-
-          if (jobDoc.exists) {
-            // 3. Navigate to Job Details
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => JobDetailsPage(
-                  job: jobDoc.data() as Map<String, dynamic>,
-                  jobId: jobId,
-                ),
-              ),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("This job post no longer exists.")));
-          }
-        } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error opening job: $e")));
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-              child: const Icon(Icons.work, color: Color(0xFF2E7EFF)),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(data['title'] ?? 'Job Title', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 4),
-                  Text(data['price'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-              child: const Text("View", style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
+         Navigator.push(
+           context, 
+           MaterialPageRoute(
+             builder: (context) => JobDetailsPage(
+               job: jobMap, 
+               jobId: jobId,
+               isHired: false, 
+               isRejected: false, 
+             )
+           )
+         );
+      }
+    } catch (e) {
+      debugPrint("Error fetching job: $e");
+    }
   }
 }
