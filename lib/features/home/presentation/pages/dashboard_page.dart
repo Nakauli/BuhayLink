@@ -6,7 +6,8 @@ import 'profile_page.dart';
 import 'messages_page.dart';
 import 'search_page.dart'; 
 import 'notifications_page.dart';
-import 'job_details_page.dart'; 
+import 'job_details_page.dart';
+import 'applied_jobs_page.dart'; // <--- IMPORT THE NEW PAGE
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -141,7 +142,7 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
               const SizedBox(height: 24),
 
-              // THE 4 STATS BOXES SECTION (LABEL CHANGED HERE)
+              // THE 4 STATS BOXES SECTION
               StreamBuilder<DocumentSnapshot>(
                 stream: uid != null ? FirebaseFirestore.instance.collection('users').doc(uid).snapshots() : null,
                 builder: (context, snapshot) {
@@ -149,10 +150,18 @@ class _DashboardPageState extends State<DashboardPage> {
                   return Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // 1. Applied
-                      _buildStatCard(data?['appliedCount']?.toString() ?? "0", "Applied", Icons.assignment_turned_in_rounded),
+                      // 1. APPLIED (NOW CLICKABLE)
+                      _buildStatCard(
+                        data?['appliedCount']?.toString() ?? "0", 
+                        "Applied", 
+                        Icons.assignment_turned_in_rounded,
+                        onTap: () {
+                          // Navigate to the new Applied Jobs page
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const AppliedJobsPage()));
+                        }
+                      ),
                       
-                      // 2. Hired - Label changed from "Hired\n(Completed)" to "Hired"
+                      // 2. Hired
                       _buildStatCard(data?['hiredCompleted']?.toString() ?? "0", "Hired", Icons.handshake_rounded),
                       
                       // 3. Ratings
@@ -294,43 +303,45 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // 4 BOX UI HELPER
-  Widget _buildStatCard(String value, String label, IconData icon) {
-    // Dynamic width calculation for 4 boxes
+  // UPDATED HELPER TO ACCEPT ONTAP
+  Widget _buildStatCard(String value, String label, IconData icon, {VoidCallback? onTap}) {
     double boxWidth = (MediaQuery.of(context).size.width - 64) / 4; 
 
-    return Container(
-      width: boxWidth,
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.2)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white, size: 20),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+    return GestureDetector(
+      onTap: onTap, // Add click functionality
+      child: Container(
+        width: boxWidth,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.2)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 20),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 9,
-              color: Colors.white.withOpacity(0.7),
-              height: 1.1,
+            const SizedBox(height: 2),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 9,
+                color: Colors.white.withOpacity(0.7),
+                height: 1.1,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

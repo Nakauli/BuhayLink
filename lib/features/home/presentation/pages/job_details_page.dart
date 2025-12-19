@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'public_profile_page.dart'; // <--- Import the new page
+import 'public_profile_page.dart'; 
 
 class JobDetailsPage extends StatefulWidget {
   final Map<String, dynamic> job;
@@ -22,29 +22,58 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     if (user == null) return;
 
     try {
+      // 1. SAVE TO USER'S "APPLIED" LIST (Critical for the Applied Box feature)
+      // This allows the "AppliedJobsPage" to fetch and display this job later.
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('applications')
+          .add({
+        'jobId': widget.jobId,
+        'title': widget.job['title'],
+        'price': widget.job['price'] ?? "₱${widget.job['budgetMin']} - ₱${widget.job['budgetMax']}",
+        'timestamp': FieldValue.serverTimestamp(),
+        'status': 'Applied',
+        'employerId': widget.job['posterId'], // Useful for future reference
+      });
+
+      // 2. NOTIFY THE EMPLOYER
+      // Creates a notification in the employer's collection so they see the applicant.
       await FirebaseFirestore.instance.collection('notifications').add({
         'recipientId': widget.job['posterId'],
         'message': "${user.email?.split('@')[0] ?? 'Someone'} applied for: ${widget.job['title']}",
+        'applicantId': user.uid,
+        'jobId': widget.jobId,
         'read': false,
         'timestamp': FieldValue.serverTimestamp(),
         'type': 'application',
-        'jobId': widget.jobId,
       });
 
+      // 3. UPDATE USER STATS (Increments "Applied" count on Dashboard)
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+        'appliedCount': FieldValue.increment(1),
+      });
+
+      // 4. UPDATE JOB APPLICANTS COUNT
       await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).update({
         'applicants': FieldValue.increment(1),
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Application Sent!"), backgroundColor: Colors.green),
+          const SnackBar(content: Text("Application Sent! Job saved to your list."), backgroundColor: Colors.green),
         );
         Navigator.pop(context);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isApplying = false);
+      }
     }
-    setState(() => _isApplying = false);
   }
 
   @override
@@ -84,7 +113,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                     decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(20)),
                     child: Text(widget.job['tag'].toString(), style: TextStyle(color: Colors.blue[700], fontSize: 12, fontWeight: FontWeight.w600)),
                   ),
-                 
+                  
                   const SizedBox(height: 24),
 
                   // 2. Profile Section (REAL-TIME FETCH)
@@ -93,10 +122,8 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                         ? FirebaseFirestore.instance.collection('users').doc(widget.job['posterId']).snapshots()
                         : null,
                     builder: (context, snapshot) {
-                      // Logic to determine name (Fallback chain: Firestore -> Job Data -> "Employer")
                       String name = widget.job['user'] ?? "Employer";
-                     
-                      // Fix for "My Posts" (Self)
+                      
                       final currentUser = FirebaseAuth.instance.currentUser;
                       if (name == "Employer" && widget.job['posterId'] == currentUser?.uid) {
                          name = currentUser?.email?.split('@')[0] ?? "Me";
@@ -109,7 +136,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                           name = fetchedName;
                         }
                       }
-                     
+                      
                       String firstLetter = name.isNotEmpty ? name[0].toUpperCase() : "E";
 
                       return Container(
@@ -175,7 +202,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                   // 3. Info Grid
                   Row(
                     children: [
-                      Expanded(child: _buildInfoCard(Icons.attach_money, "Budget", widget.job['price'])),
+                      Expanded(child: _buildInfoCard(Icons.attach_money, "Budget", widget.job['price'] ?? "₱${widget.job['budgetMin']} - ₱${widget.job['budgetMax']}")),
                       const SizedBox(width: 12),
                       Expanded(child: _buildInfoCard(Icons.people_outline, "Applicants", widget.job['applicants'].toString().replaceAll(" applicants", ""))),
                     ],
@@ -183,9 +210,9 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(child: _buildInfoCard(Icons.location_on_outlined, "Location", widget.job['location'])),
+                      Expanded(child: _buildInfoCard(Icons.location_on_outlined, "Location", widget.job['location'] ?? "Remote")),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildInfoCard(Icons.access_time, "Deadline", widget.job['duration'])),
+                      Expanded(child: _buildInfoCard(Icons.access_time, "Deadline", widget.job['duration'] ?? "3 days")),
                     ],
                   ),
 
@@ -236,8 +263,8 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
                     child: _isApplying
-                       ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                       : const Text("Apply Now", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text("Apply Now", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],
