@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'job_details_page.dart'; 
 
 class HiredJobsPage extends StatelessWidget {
-  const HiredJobsPage({super.key});
+  final String userId; // <--- ADDED THIS
+
+  const HiredJobsPage({super.key, required this.userId});
 
   @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -24,107 +23,104 @@ class HiredJobsPage extends StatelessWidget {
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)
         ),
       ),
-      body: uid == null
-          ? const Center(child: Text("Please login."))
-          : StreamBuilder<QuerySnapshot>(
-              // We check notifications because that's where we recorded the 'hired' status
-              stream: FirebaseFirestore.instance
-                  .collection('notifications')
-                  .where('recipientId', isEqualTo: uid)
-                  .where('type', isEqualTo: 'hired')
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+      body: StreamBuilder<QuerySnapshot>(
+        // Query notifications for THIS specific userId
+        stream: FirebaseFirestore.instance
+            .collection('notifications')
+            .where('recipientId', isEqualTo: userId)
+            .where('type', isEqualTo: 'hired')
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.handshake_outlined, size: 60, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text("No hired jobs yet.", style: TextStyle(color: Colors.grey)),
-                      ],
-                    ),
-                  );
-                }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.handshake_outlined, size: 60, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text("No hired jobs found.", style: TextStyle(color: Colors.grey)),
+                ],
+              ),
+            );
+          }
 
-                final docs = snapshot.data!.docs;
+          final docs = snapshot.data!.docs;
 
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: docs.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final data = docs[index].data() as Map<String, dynamic>;
-                    final String jobId = data['jobId'] ?? "";
-                    
-                    // Fetch Job Details for each hired notification
-                    return FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance.collection('jobs').doc(jobId).get(),
-                      builder: (context, jobSnapshot) {
-                        if (!jobSnapshot.hasData || !jobSnapshot.data!.exists) {
-                          return const SizedBox.shrink(); // Hide if job deleted
-                        }
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: docs.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final data = docs[index].data() as Map<String, dynamic>;
+              final String jobId = data['jobId'] ?? "";
+              
+              return FutureBuilder<DocumentSnapshot>(
+                future: FirebaseFirestore.instance.collection('jobs').doc(jobId).get(),
+                builder: (context, jobSnapshot) {
+                  if (!jobSnapshot.hasData || !jobSnapshot.data!.exists) {
+                    return const SizedBox.shrink();
+                  }
 
-                        final jobData = jobSnapshot.data!.data() as Map<String, dynamic>;
+                  final jobData = jobSnapshot.data!.data() as Map<String, dynamic>;
 
-                        return GestureDetector(
-                          onTap: () {
-                             _navigateToJob(context, jobId);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
+                  return GestureDetector(
+                    onTap: () {
+                       _navigateToJob(context, jobId);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.green.shade200),
+                        boxShadow: [
+                           BoxShadow(color: Colors.green.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+                        ]
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 50, height: 50,
                             decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.green.shade200), // Green border for Hired
-                              boxShadow: [
-                                 BoxShadow(color: Colors.green.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
-                              ]
+                              color: Colors.green[50],
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Row(
+                            child: const Icon(Icons.check_circle, color: Colors.green),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  width: 50, height: 50,
-                                  decoration: BoxDecoration(
-                                    color: Colors.green[50],
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Icon(Icons.check_circle, color: Colors.green),
+                                Text(
+                                  jobData['title'] ?? "Job Title", 
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  maxLines: 1, 
+                                  overflow: TextOverflow.ellipsis
                                 ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        jobData['title'] ?? "Job Title", 
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                        maxLines: 1, 
-                                        overflow: TextOverflow.ellipsis
-                                      ),
-                                      const SizedBox(height: 4),
-                                      const Text(
-                                        "Status: Hired", 
-                                        style: TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)
-                                      ),
-                                    ],
-                                  ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  "Status: Hired", 
+                                  style: TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)
                                 ),
-                                const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                               ],
                             ),
                           ),
-                        );
-                      }
-                    );
-                  },
-                );
-              },
-            ),
+                          const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -154,7 +150,7 @@ class HiredJobsPage extends StatelessWidget {
              builder: (context) => JobDetailsPage(
                job: jobMap, 
                jobId: jobId,
-               isHired: true, // Show the Green Hired Banner
+               isHired: true, 
                isRejected: false, 
              )
            )
