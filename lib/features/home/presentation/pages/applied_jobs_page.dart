@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'job_details_page.dart'; 
 
 class AppliedJobsPage extends StatefulWidget {
-  final bool showBackButton; // <--- The Dashboard needs this!
+  final bool showBackButton; 
 
   const AppliedJobsPage({super.key, this.showBackButton = true});
 
@@ -34,10 +34,11 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
 
       final int actualCount = query.count ?? 0;
 
+      // Use SET with MERGE so it creates the doc if missing, preventing crashes
       await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
-          .update({'appliedCount': actualCount});
+          .set({'appliedCount': actualCount}, SetOptions(merge: true));
     } catch (e) {
       debugPrint("Error syncing count: $e");
     }
@@ -52,7 +53,6 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        // --- FIX: Only show arrow if allowed ---
         automaticallyImplyLeading: widget.showBackButton,
         leading: widget.showBackButton 
           ? IconButton(
@@ -80,6 +80,7 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
                 }
 
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  // If empty, sync to 0 to be safe
                   if (snapshot.connectionState == ConnectionState.active) {
                      _syncApplicationCount(); 
                   }
@@ -111,30 +112,72 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
                       key: Key(doc.id), 
                       direction: DismissDirection.endToStart, 
                       
+                      // 1. CONFIRMATION DIALOG (The new feature!)
+                      confirmDismiss: (direction) async {
+                        return await showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return AlertDialog(
+                              title: const Text("Withdraw Application?"),
+                              content: const Text("Are you sure you want to remove this job from your list?"),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(false), // Cancel
+                                  child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(true), // Confirm Delete
+                                  child: const Text("Withdraw", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+
+                      // 2. BACKGROUND (Red slide)
                       background: Container(
                         alignment: Alignment.centerRight,
                         padding: const EdgeInsets.only(right: 20),
                         decoration: BoxDecoration(
-                          color: Colors.red,
+                          color: Colors.red[50],
                           borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.red.shade100),
                         ),
-                        child: const Icon(Icons.delete, color: Colors.white, size: 30),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Text("Withdraw", style: TextStyle(color: Colors.red[700], fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 8),
+                            Icon(Icons.delete_outline, color: Colors.red[700], size: 26),
+                          ],
+                        ),
                       ),
                       
+                      // 3. ACTION (Safe Delete)
                       onDismissed: (direction) async {
-                        await FirebaseFirestore.instance
-                            .collection('users')
-                            .doc(uid)
-                            .collection('applications')
-                            .doc(doc.id)
-                            .delete();
-                        
-                        await FirebaseFirestore.instance
-                            .collection('users')
-                            .doc(uid)
-                            .update({
-                              'appliedCount': FieldValue.increment(-1)
-                            });
+                        try {
+                          // A. Delete the application
+                          await FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(uid)
+                              .collection('applications')
+                              .doc(doc.id)
+                              .delete();
+                          
+                          // B. Safely Decrement Counter (Avoids crash if doc missing)
+                          await FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(uid)
+                              .set({
+                                'appliedCount': FieldValue.increment(-1)
+                              }, SetOptions(merge: true));
+                              
+                        } catch (e) {
+                          debugPrint("Error deleting application: $e");
+                          // Ideally show a snackbar here if it fails
+                        }
                       },
 
                       child: Container(
