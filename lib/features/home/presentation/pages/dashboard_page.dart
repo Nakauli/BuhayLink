@@ -7,7 +7,9 @@ import 'messages_page.dart';
 import 'search_page.dart'; 
 import 'notifications_page.dart';
 import 'job_details_page.dart';
-import 'applied_jobs_page.dart'; 
+import 'applied_jobs_page.dart';
+import 'hired_jobs_page.dart'; // NEW
+import 'saved_jobs_page.dart'; // NEW
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -18,7 +20,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   int _selectedIndex = 0;
-  bool _showMyPosts = false; // false = Find Jobs (Applicant), true = My Posts (Employer)
+  bool _showMyPosts = false; 
   String _selectedFilter = "All"; 
   String _searchQuery = "";       
 
@@ -39,8 +41,6 @@ class _DashboardPageState extends State<DashboardPage> {
         items: [
           const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
           const BottomNavigationBarItem(icon: Icon(Icons.search), label: "Search"),
-          
-          // --- DYNAMIC MIDDLE BUTTON ---
           BottomNavigationBarItem(
             icon: Icon(
               _showMyPosts ? Icons.add_circle : Icons.assignment, 
@@ -49,8 +49,6 @@ class _DashboardPageState extends State<DashboardPage> {
             ), 
             label: _showMyPosts ? "Post" : "Applied"
           ),
-          // -----------------------------
-
           const BottomNavigationBarItem(icon: Icon(Icons.message), label: "Messages"),
           const BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
         ],
@@ -106,64 +104,15 @@ class _DashboardPageState extends State<DashboardPage> {
                     ],
                   ),
                   
-                  // --- SPECIFIC NOTIFICATION BELL ---
+                  // Notification Bell
                   GestureDetector(
                     onTap: () {
-                       Navigator.push(
-                         context, 
-                         MaterialPageRoute(
-                           builder: (context) => NotificationsPage(
-                             isEmployerMode: _showMyPosts 
-                           )
-                         )
-                       );
+                       Navigator.push(context, MaterialPageRoute(builder: (context) => NotificationsPage(isEmployerMode: _showMyPosts)));
                     },
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
-                      child: StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('notifications')
-                            .where('recipientId', whereIn: [uid, 'all'])
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          int unreadCount = 0;
-                          if (snapshot.hasData) {
-                            unreadCount = snapshot.data!.docs.where((doc) {
-                              final data = doc.data() as Map<String, dynamic>;
-                              if (data['read'] == true) return false;
-                              final String type = data['type'] ?? 'application';
-                              final String posterId = data['posterId'] ?? "";
-
-                              if (_showMyPosts) {
-                                return type == 'application';
-                              } else {
-                                if (type == 'new_post') return posterId != uid;
-                                return ['hired', 'rejected'].contains(type);
-                              }
-                            }).length;
-                          }
-
-                          return Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              const Icon(Icons.notifications, color: Colors.white),
-                              if (unreadCount > 0)
-                                Positioned(
-                                  right: -2, top: -2,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                    child: Text(
-                                      unreadCount > 9 ? "9+" : unreadCount.toString(), 
-                                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          );
-                        },
-                      ),
+                      child: const Icon(Icons.notifications, color: Colors.white),
                     ),
                   )
                 ],
@@ -183,22 +132,82 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
               const SizedBox(height: 24),
 
-              // THE 4 STATS BOXES
-              StreamBuilder<DocumentSnapshot>(
-                stream: uid != null ? FirebaseFirestore.instance.collection('users').doc(uid).snapshots() : null,
-                builder: (context, snapshot) {
-                  final data = snapshot.data?.data() as Map<String, dynamic>?;
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildStatCard(data?['appliedCount']?.toString() ?? "0", "Applied", Icons.assignment_turned_in_rounded, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AppliedJobsPage()))),
-                      _buildStatCard(data?['hiredCompleted']?.toString() ?? "0", "Hired", Icons.handshake_rounded),
-                      _buildStatCard(data?['rating']?.toString() ?? "0.0", "Ratings", Icons.star_rounded),
-                      _buildStatCard(data?['savedCount']?.toString() ?? "0", "Saved", Icons.bookmark_rounded),
-                    ],
-                  );
-                }
-              ),
+              // --- DYNAMIC STATS BOXES ---
+              // 1. EMPLOYER MODE (My Posts)
+              if (_showMyPosts)
+                 StreamBuilder<QuerySnapshot>(
+                   // Count all my jobs
+                   stream: FirebaseFirestore.instance.collection('jobs').where('postedBy', isEqualTo: uid).snapshots(),
+                   builder: (context, snapshot) {
+                     int active = 0;
+                     int hired = 0;
+                     int total = 0;
+
+                     if (snapshot.hasData) {
+                       total = snapshot.data!.docs.length;
+                       // Count 'open' as Active
+                       active = snapshot.data!.docs.where((doc) => doc['status'] == 'open').length;
+                       // Count 'hired' or 'closed' as Hired
+                       hired = snapshot.data!.docs.where((doc) => doc['status'] == 'hired' || doc['status'] == 'closed').length;
+                     }
+
+                     return Row(
+                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                       children: [
+                         _buildStatCard(active.toString(), "Active", Icons.work_outline),
+                         _buildStatCard(hired.toString(), "Hired", Icons.handshake_rounded),
+                         _buildStatCard("4.5", "Ratings", Icons.star_rounded), 
+                         _buildStatCard(total.toString(), "Total Posts", Icons.list_alt_rounded),
+                       ],
+                     );
+                   }
+                 )
+              // 2. APPLICANT MODE (Find Jobs)
+              else
+                 StreamBuilder<DocumentSnapshot>(
+                   stream: uid != null ? FirebaseFirestore.instance.collection('users').doc(uid).snapshots() : null,
+                   builder: (context, snapshot) {
+                     final data = snapshot.data?.data() as Map<String, dynamic>?;
+                     
+                     // Get counts from User Profile
+                     final String appliedCount = data?['appliedCount']?.toString() ?? "0";
+                     final String savedCount = data?['savedCount']?.toString() ?? "0";
+                     // (You can add 'hiredCount' to your user profile later if you want to track it precisely)
+                     
+                     return Row(
+                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                       children: [
+                         // BOX 1: APPLIED -> Goes to AppliedJobsPage
+                         _buildStatCard(
+                           appliedCount, 
+                           "Applied", 
+                           Icons.assignment_turned_in_rounded, 
+                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AppliedJobsPage()))
+                         ),
+                         // BOX 2: HIRED -> Goes to HiredJobsPage
+                         _buildStatCard(
+                           "0", // You can calculate this properly later by querying applications where status == 'Hired'
+                           "Hired", 
+                           Icons.check_circle_outline,
+                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const HiredJobsPage()))
+                         ),
+                         // BOX 3: RATINGS (Profile)
+                         _buildStatCard(
+                           data?['rating']?.toString() ?? "0.0", 
+                           "Ratings", 
+                           Icons.star_rounded
+                         ),
+                         // BOX 4: SAVED -> Goes to SavedJobsPage
+                         _buildStatCard(
+                           savedCount, 
+                           "Saved", 
+                           Icons.bookmark_rounded,
+                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SavedJobsPage()))
+                         ),
+                       ],
+                     );
+                   }
+                 ),
             ],
           ),
         ),
@@ -209,7 +218,7 @@ class _DashboardPageState extends State<DashboardPage> {
           child: TextField(
             onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
             decoration: InputDecoration(
-              hintText: "Search for jobs...",
+              hintText: _showMyPosts ? "Search my posts..." : "Search for jobs...",
               prefixIcon: const Icon(Icons.search, color: Colors.grey),
               filled: true,
               fillColor: Colors.white,
@@ -254,7 +263,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
               var docs = snapshot.data!.docs;
 
-              // --- FILTER OUT MY OWN POSTS IN FIND JOBS ---
+              // Filter out my own posts if in "Find Jobs" mode
               final currentUid = FirebaseAuth.instance.currentUser?.uid;
               if (!_showMyPosts && currentUid != null) {
                 docs = docs.where((doc) {
@@ -262,7 +271,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   return data['postedBy'] != currentUid;
                 }).toList();
               }
-              // --------------------------------------------
 
               if (_searchQuery.isNotEmpty) {
                 docs = docs.where((doc) {
@@ -321,14 +329,9 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _getBodyContent() {
     switch (_selectedIndex) {
       case 1: return const SearchPage();
-      
-      // --- DYNAMIC PAGE LOADING ---
-      // Pass showBackButton: false so they don't crash the dashboard
       case 2: return _showMyPosts 
           ? const AddJobPage(showBackButton: false)
           : const AppliedJobsPage(showBackButton: false);
-      // ----------------------------
-
       case 3: return const MessagesPage();
       case 4: return const ProfilePage();
       default: return const Center(child: Text("Page Not Found"));
