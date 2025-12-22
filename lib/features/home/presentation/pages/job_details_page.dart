@@ -65,21 +65,23 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
 
     try {
       String applicantName = user.email?.split('@')[0] ?? "Applicant";
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       
-      if (userDoc.exists) {
-        final data = userDoc.data() as Map<String, dynamic>;
-        if (data['fullName'] != null && data['fullName'].toString().isNotEmpty) {
-          applicantName = data['fullName'];
-        } else if (data['firstName'] != null && data['firstName'].toString().isNotEmpty) {
-          String first = data['firstName'];
-          String last = data['lastName'] ?? "";
-          applicantName = "$first $last".trim();
-        } else if (data['username'] != null && data['username'].toString().isNotEmpty) {
-          applicantName = data['username'];
+      // 1. Try to get applicant name safely
+      try {
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (userDoc.exists) {
+          final data = userDoc.data() as Map<String, dynamic>;
+          if (data['fullName'] != null && data['fullName'].toString().isNotEmpty) {
+            applicantName = data['fullName'];
+          } else if (data['firstName'] != null) {
+            applicantName = "${data['firstName']} ${data['lastName'] ?? ''}".trim();
+          }
         }
+      } catch (e) {
+        debugPrint("Could not fetch user profile, using email name.");
       }
 
+      // 2. Add Notification
       await FirebaseFirestore.instance.collection('notifications').add({
         'recipientId': employerId,
         'title': 'New Applicant',
@@ -91,6 +93,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         'type': 'application',
       });
 
+      // 3. Add to My Applications
       await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('applications').add({
         'jobId': widget.jobId,
         'title': widget.job['title'],
@@ -100,9 +103,11 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         'employerId': employerId,
       });
 
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+      // 4. FIX: Use SET with MERGE to update counter (Prevents "Not Found" error)
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'appliedCount': FieldValue.increment(1),
-      });
+      }, SetOptions(merge: true));
+
       await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).update({
         'applicants': FieldValue.increment(1),
       });
