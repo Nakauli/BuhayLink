@@ -246,17 +246,30 @@ class _DashboardPageState extends State<DashboardPage> {
               : FirebaseFirestore.instance.collection('jobs').orderBy('postedAt', descending: true).snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+              
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 return Center(child: Text(_showMyPosts ? "You haven't posted any jobs." : "No jobs found.", style: TextStyle(color: Colors.grey[500])));
               }
 
               var docs = snapshot.data!.docs;
+
+              // --- FIX: HIDE MY OWN POSTS IN FIND JOBS MODE ---
+              final currentUid = FirebaseAuth.instance.currentUser?.uid;
+              if (!_showMyPosts && currentUid != null) {
+                docs = docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  return data['postedBy'] != currentUid;
+                }).toList();
+              }
+              // -----------------------------------------------
+
               if (_searchQuery.isNotEmpty) {
                 docs = docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   return (data['title'] ?? "").toString().toLowerCase().contains(_searchQuery) || (data['category'] ?? "").toString().toLowerCase().contains(_searchQuery);
                 }).toList();
               }
+              
               if (!_showMyPosts) { 
                 if (_selectedFilter == "Urgent") docs = docs.where((doc) => (doc.data() as Map<String, dynamic>)['isUrgent'] == true).toList();
                 else if (_selectedFilter == "\$ High Pay") docs = docs.where((doc) => ((doc.data() as Map<String, dynamic>)['budgetMax'] ?? 0) >= 20000).toList();
@@ -285,6 +298,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     "applicants": "${data['applicants'] ?? 0} applicants",
                     "duration": "3 days", 
                     "isUrgent": data['isUrgent'] ?? false,
+                    "description": data['description'] ?? "No description.", // Added fallback description
                   };
 
                   return GestureDetector(
@@ -302,7 +316,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- HELPERS (Copied from your previous code) ---
+  // --- HELPERS ---
   Widget _getBodyContent() {
     switch (_selectedIndex) {
       case 1: return const SearchPage();
@@ -377,7 +391,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ],
           ),
           const SizedBox(height: 12),
-          Text("Looking for a skilled professional to help with this project.", style: TextStyle(color: Colors.grey[600], fontSize: 13, height: 1.4), maxLines: 2, overflow: TextOverflow.ellipsis),
+          Text(job['description'] ?? "Looking for a skilled professional to help with this project.", style: TextStyle(color: Colors.grey[600], fontSize: 13, height: 1.4), maxLines: 2, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 16),
           Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(12)), child: Text(job['tag'].toString(), style: TextStyle(color: Colors.blue[700], fontSize: 12, fontWeight: FontWeight.w600))),
           const SizedBox(height: 20),
