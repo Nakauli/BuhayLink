@@ -1,10 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../../auth/presentation/pages/login_page.dart'; // Import Login Page for logout redirection
-
+import 'package:firebase_storage/firebase_storage.dart'; 
+// --- FIX: CORRECT IMPORT PATH FOR LOGIN PAGE ---
+import '../../../auth/presentation/pages/login_page.dart'; 
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -19,19 +20,80 @@ class _ProfilePageState extends State<ProfilePage> {
   final ImagePicker _picker = ImagePicker();
   final User? currentUser = FirebaseAuth.instance.currentUser;
   
-  // NEW: Track which tab is active (0=Overview, 1=Reviews, 2=Activity, 3=Settings)
   int _activeTabIndex = 0; 
+  bool _isUploading = false; 
 
   // --- ACTIONS ---
-  Future<void> _pickImage() async {
-    final XFile? pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) setState(() => _profileImage = File(pickedFile.path));
+  
+  void _showImageSourceActionSheet(BuildContext context) {
+    if (_isUploading) return; 
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Color(0xFF2E7EFF)),
+              title: const Text('Photo Gallery'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _pickAndUploadImage(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Color(0xFF2E7EFF)),
+              title: const Text('Camera'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _pickAndUploadImage(ImageSource.camera);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickAndUploadImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(source: source);
+      
+      if (pickedFile == null) return;
+
+      setState(() {
+        _profileImage = File(pickedFile.path);
+        _isUploading = true;
+      });
+
+      // A. Upload to Firebase Storage
+      final String fileName = '${currentUser!.uid}_profile.jpg';
+      final Reference storageRef = FirebaseStorage.instance.ref().child('profile_images/$fileName');
+      
+      await storageRef.putFile(File(pickedFile.path));
+      final String downloadUrl = await storageRef.getDownloadURL();
+
+      // B. Save URL to Firestore
+      await FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).update({
+        'photoUrl': downloadUrl,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile photo updated!")));
+      }
+
+    } catch (e) {
+      debugPrint("Error uploading image: $e");
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload failed: $e")));
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
   }
 
   Future<void> _signOut() async {
     await FirebaseAuth.instance.signOut();
     if (mounted) {
-      // Remove all previous routes and go to Login
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const LoginPage()),
         (Route<dynamic> route) => false,
@@ -39,128 +101,153 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  Future<DocumentSnapshot<Map<String, dynamic>>> _getUserData() async {
-    if (currentUser == null) throw Exception("No user logged in");
-    return await FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).get();
-  }
-
+  // --- UI BUILDER ---
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        future: _getUserData(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+    if (currentUser == null) {
+      return const Center(child: Text("Please login to view profile"));
+    }
 
-          final userData = snapshot.data?.data();
-          final String username = userData?['username'] ?? "User";
-          final String email = userData?['email'] ?? currentUser?.email ?? "No Email";
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: const Text("My Profile", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.red),
+            onPressed: _signOut,
+          )
+        ],
+      ),
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+          final data = snapshot.data!.data() as Map<String, dynamic>?;
+          String name = data?['fullName'] ?? data?['firstName'] ?? currentUser?.email?.split('@')[0] ?? "User";
+          String? photoUrl = data?['photoUrl']; 
+          String role = "Member";
 
           return SingleChildScrollView(
             child: Column(
               children: [
-                Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.center,
-                  children: [
-                    // 1. HEADER
-                    Container(
-                      height: 240, width: double.infinity,
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(colors: [Color(0xFF2E7EFF), Color(0xFF9542FF)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                const SizedBox(height: 20),
+                
+                // 1. PROFILE IMAGE PICKER
+                Center(
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.grey[200],
+                          border: Border.all(color: Colors.white, width: 4),
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))
+                          ],
+                          image: _getImageProvider(photoUrl), 
+                        ),
+                        child: (_profileImage == null && photoUrl == null)
+                            ? Icon(Icons.person, size: 60, color: Colors.grey[400])
+                            : null,
                       ),
-                      child: SafeArea(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text("Profile", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
-                                child: const Icon(Icons.edit, color: Colors.white, size: 20),
-                              ),
-                            ],
+                      
+                      if (_isUploading)
+                        const Positioned.fill(
+                          child: CircularProgressIndicator(color: Color(0xFF2E7EFF)),
+                        ),
+
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: () => _showImageSourceActionSheet(context), 
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF2E7EFF),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
                           ),
                         ),
-                      ),
-                    ),
+                      )
+                    ],
+                  ),
+                ),
 
-                    // 2. MAIN CARD
+                const SizedBox(height: 16),
+
+                // 2. USER INFO
+                Column(
+                  children: [
+                    Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text(currentUser?.email ?? "", style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+                    const SizedBox(height: 8),
                     Container(
-                      margin: const EdgeInsets.fromLTRB(16, 110, 16, 0),
-                      padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(30), bottom: Radius.circular(30)),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 5))],
-                      ),
-                      child: Column(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(20)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          // User Info
-                          Text(username, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
-                          Text(email, style: TextStyle(color: Colors.grey[600], fontSize: 14)),
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(20)),
-                            child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.check_circle, size: 16, color: Colors.green), SizedBox(width: 4), Text("Verified", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12))]),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Stats
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              _buildStatBox("12", "Jobs Done", Icons.work_outline, Colors.blue),
-                              _buildStatBox("4.5", "Rating", Icons.star_border, Colors.amber),
-                              _buildStatBox("0", "Reviews", Icons.rate_review_outlined, Colors.purple),
-                            ],
-                          ),
-                          const SizedBox(height: 30),
-
-                          // --- INTERACTIVE TABS ---
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              _buildTabItem("Overview", 0),
-                              _buildTabItem("Reviews", 1),
-                              _buildTabItem("Activity", 2),
-                              _buildTabItem("Settings", 3),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          // Animated Indicator Logic could go here, for now simpler logic:
-                          const Divider(height: 1, color: Colors.grey),
-                          const SizedBox(height: 24),
-
-                          // --- DYNAMIC CONTENT AREA ---
-                          _buildTabContent(),
+                          const Icon(Icons.check_circle, size: 14, color: Colors.green),
+                          const SizedBox(width: 4),
+                          Text("Verified $role", style: TextStyle(color: Colors.green[700], fontSize: 12, fontWeight: FontWeight.bold)),
                         ],
                       ),
-                    ),
-
-                    // 3. AVATAR
-                    Positioned(
-                      top: 60,
-                      child: GestureDetector(
-                        onTap: _pickImage,
-                        child: Container(
-                          width: 100, height: 100,
-                          decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white, border: Border.all(color: Colors.white, width: 4), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)]),
-                          child: Container(
-                            decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.grey[200], image: _profileImage != null ? DecorationImage(image: FileImage(_profileImage!), fit: BoxFit.cover) : null, gradient: _profileImage == null ? const LinearGradient(colors: [Color(0xFF8EC5FC), Color(0xFFE0C3FC)]) : null),
-                            child: _profileImage == null ? Center(child: Text(username.isNotEmpty ? username[0].toUpperCase() : "U", style: const TextStyle(fontSize: 40, color: Colors.white, fontWeight: FontWeight.bold))) : null,
-                          ),
-                        ),
-                      ),
-                    ),
+                    )
                   ],
                 ),
+
+                const SizedBox(height: 24),
+
+                // 3. STATS ROW
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildStatItem("Applied", data?['appliedCount']?.toString() ?? "0", Icons.work_outline),
+                      _buildStatItem("Rating", data?['rating']?.toString() ?? "0.0", Icons.star_border),
+                      _buildStatItem("Reviews", "0", Icons.rate_review_outlined),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+
+                // 4. CUSTOM TAB BAR
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      _buildTab("Overview", 0),
+                      _buildTab("Reviews", 1),
+                      _buildTab("Activity", 2),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // 5. TAB CONTENT AREA
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: _buildTabContent(),
+                ),
+                
                 const SizedBox(height: 40),
               ],
             ),
@@ -170,85 +257,103 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // --- CONTENT SWITCHER ---
-  Widget _buildTabContent() {
-    if (_activeTabIndex == 3) {
-      // --- SETTINGS VIEW (Matches image_4fd8a3.png) ---
-      return Column(
-        children: [
-          _buildSettingsTile(Icons.settings_outlined, "Account Settings"),
-          _buildSettingsTile(Icons.upload_file_outlined, "Upload Documents"),
-          _buildSettingsTile(Icons.verified_outlined, "Certifications"),
-          const SizedBox(height: 10),
-          // Logout Button
-          ListTile(
-            onTap: _signOut, // <--- LOGOUT FUNCTION
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.logout, color: Colors.grey),
-            title: const Text("Logout", style: TextStyle(fontWeight: FontWeight.w500)),
-            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-          ),
-        ],
-      );
-    } 
-    
-    // --- DEFAULT: OVERVIEW VIEW (Matches image_5131a6.png) ---
+  // --- HELPERS ---
+  
+  DecorationImage? _getImageProvider(String? cloudUrl) {
+    if (_profileImage != null) {
+      return DecorationImage(image: FileImage(_profileImage!), fit: BoxFit.cover);
+    }
+    if (cloudUrl != null && cloudUrl.isNotEmpty) {
+      return DecorationImage(image: NetworkImage(cloudUrl), fit: BoxFit.cover);
+    }
+    return null;
+  }
+
+  Widget _buildStatItem(String label, String value, IconData icon) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("About Me", style: _headerStyle()),
+        Icon(icon, color: const Color(0xFF2E7EFF), size: 28),
         const SizedBox(height: 8),
-        Text("Experienced professional ready to help with your projects. Specialized in home renovations.", style: TextStyle(color: Colors.grey[600], height: 1.5)),
-        const SizedBox(height: 24),
-        Text("Location", style: _headerStyle()),
-        const SizedBox(height: 8),
-        const Row(children: [Icon(Icons.location_on_outlined, color: Colors.grey, size: 20), SizedBox(width: 8), Text("Metro Manila", style: TextStyle(fontWeight: FontWeight.w500))]),
-        const SizedBox(height: 24),
-        Text("Skills", style: _headerStyle()),
-        const SizedBox(height: 12),
-        Wrap(spacing: 8, children: [_buildSkillChip("Carpentry"), _buildSkillChip("Plumbing"), _buildSkillChip("Electrical")]),
+        Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
       ],
     );
   }
 
-  // --- HELPER WIDGETS ---
-  TextStyle _headerStyle() => const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87);
-
-  Widget _buildTabItem(String label, int index) {
+  Widget _buildTab(String text, int index) {
     bool isActive = _activeTabIndex == index;
-    return InkWell(
-      onTap: () => setState(() => _activeTabIndex = index),
-      child: Column(
-        children: [
-          Text(label, style: TextStyle(color: isActive ? const Color(0xFF2E7EFF) : Colors.grey, fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
-          if (isActive) ...[
-            const SizedBox(height: 4),
-            Container(width: 40, height: 3, color: const Color(0xFF2E7EFF))
-          ]
-        ],
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _activeTabIndex = index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isActive ? const Color(0xFF2E7EFF) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Center(
+            child: Text(
+              text, 
+              style: TextStyle(
+                color: isActive ? Colors.white : Colors.grey[600],
+                fontWeight: FontWeight.bold,
+                fontSize: 13
+              )
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildSettingsTile(IconData icon, String title) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon, color: Colors.grey),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-      onTap: () {},
-    );
-  }
-
-  Widget _buildStatBox(String value, String label, IconData icon, Color color) {
-    return Container(
-      width: 90, padding: const EdgeInsets.symmetric(vertical: 16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))], border: Border.all(color: Colors.grey.shade100)),
-      child: Column(children: [Icon(icon, color: color, size: 24), const SizedBox(height: 8), Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)), Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11))]),
-    );
+  Widget _buildTabContent() {
+    switch (_activeTabIndex) {
+      case 0:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("About Me", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            Text(
+              "Experienced freelancer with a passion for high-quality work. Specialized in home renovations and quick repairs. Always available for urgent tasks.",
+              style: TextStyle(color: Colors.grey[600], height: 1.5),
+            ),
+            const SizedBox(height: 20),
+            const Text("Skills", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildSkillChip("Carpentry"),
+                _buildSkillChip("Plumbing"),
+                _buildSkillChip("Electrical"),
+                _buildSkillChip("Painting"),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Text("Location", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            Row(children: [
+              Icon(Icons.location_on_outlined, size: 18, color: Colors.grey[500]),
+              const SizedBox(width: 8),
+              Text("Metro Manila, Philippines", style: TextStyle(color: Colors.grey[600])),
+            ]),
+          ],
+        );
+      case 1: return Center(child: Text("No reviews yet.", style: TextStyle(color: Colors.grey[400])));
+      case 2: return Center(child: Text("No recent activity.", style: TextStyle(color: Colors.grey[400])));
+      default: return const SizedBox();
+    }
   }
 
   Widget _buildSkillChip(String label) {
-    return Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: const Color(0xFFE3F2FD), borderRadius: BorderRadius.circular(20)), child: Text(label, style: const TextStyle(color: Color(0xFF1565C0), fontWeight: FontWeight.w600, fontSize: 12)));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(color: const Color(0xFF2E7EFF).withOpacity(0.05), borderRadius: BorderRadius.circular(20)),
+      child: Text(label, style: const TextStyle(color: Color(0xFF2E7EFF), fontWeight: FontWeight.bold, fontSize: 12)),
+    );
   }
 }
