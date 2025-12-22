@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'job_details_page.dart'; // Needed for navigation
+import 'job_details_page.dart'; 
 
 class SavedJobsPage extends StatelessWidget {
   const SavedJobsPage({super.key});
@@ -24,8 +24,7 @@ class SavedJobsPage extends StatelessWidget {
       body: uid == null 
         ? const Center(child: Text("Please login"))
         : StreamBuilder<QuerySnapshot>(
-            // We look at the 'saved' subcollection of the user
-            stream: FirebaseFirestore.instance.collection('users').doc(uid).collection('saved').snapshots(),
+            stream: FirebaseFirestore.instance.collection('users').doc(uid).collection('saved').orderBy('savedAt', descending: true).snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
 
@@ -47,25 +46,96 @@ class SavedJobsPage extends StatelessWidget {
                 itemCount: snapshot.data!.docs.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
-                  final data = snapshot.data!.docs[index].data() as Map<String, dynamic>;
+                  final doc = snapshot.data!.docs[index]; // Get the document
+                  final data = doc.data() as Map<String, dynamic>;
                   final String jobId = data['jobId'] ?? "";
                   
-                  return Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(16),
-                      leading: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8)),
-                        child: const Icon(Icons.bookmark, color: Color(0xFF2E7EFF)),
+                  // --- SWIPE TO DELETE FEATURE ---
+                  return Dismissible(
+                    key: Key(jobId), // Unique ID for this row
+                    direction: DismissDirection.endToStart, // Swipe Right to Left
+                    
+                    // 1. CONFIRMATION POPUP
+                    confirmDismiss: (direction) async {
+                      return await showDialog(
+                        context: context,
+                        builder: (BuildContext context) {
+                          return AlertDialog(
+                            title: const Text("Remove Bookmark?"),
+                            content: const Text("Are you sure you want to unsave this job?"),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(false), // Cancel
+                                child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(true), // Confirm
+                                child: const Text("Remove", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+
+                    // 2. RED BACKGROUND (Visual Cue)
+                    background: Container(
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.red.shade100),
                       ),
-                      title: Text(data['title'] ?? "Job Title", style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(data['price'] ?? "Budget"),
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                      onTap: () {
-                         if (jobId.isNotEmpty) _navigateToJob(context, jobId);
-                      },
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text("Remove", style: TextStyle(color: Colors.red[700], fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 8),
+                          Icon(Icons.bookmark_remove, color: Colors.red[700], size: 26),
+                        ],
+                      ),
+                    ),
+
+                    // 3. ACTUAL DELETE LOGIC
+                    onDismissed: (direction) async {
+                      // A. Remove from 'saved' collection
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(uid)
+                          .collection('saved')
+                          .doc(jobId) // Be sure to use the correct Doc ID (usually jobId)
+                          .delete();
+
+                      // B. Decrement the counter on Dashboard
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(uid)
+                          .set({
+                            'savedCount': FieldValue.increment(-1)
+                          }, SetOptions(merge: true));
+
+                      // Optional: Show "Undo" snackbar if you want
+                    },
+
+                    child: Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.all(16),
+                        leading: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8)),
+                          child: const Icon(Icons.bookmark, color: Color(0xFF2E7EFF)),
+                        ),
+                        title: Text(data['title'] ?? "Job Title", style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(data['price'] ?? "Budget"),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                        onTap: () {
+                           if (jobId.isNotEmpty) _navigateToJob(context, jobId);
+                        },
+                      ),
                     ),
                   );
                 },

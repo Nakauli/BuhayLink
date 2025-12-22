@@ -24,11 +24,86 @@ class JobDetailsPage extends StatefulWidget {
 class _JobDetailsPageState extends State<JobDetailsPage> {
   bool _isApplying = false;
   bool _hasApplied = false;
+  bool _isSaved = false; // <--- Tracks if job is saved
 
   @override
   void initState() {
     super.initState();
     _checkIfApplied();
+    _checkIfSaved(); // <--- Check on load
+  }
+
+  // 1. Check if previously saved
+  Future<void> _checkIfSaved() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('saved')
+          .doc(widget.jobId)
+          .get();
+
+      if (doc.exists && mounted) {
+        setState(() => _isSaved = true);
+      }
+    } catch (e) {
+      debugPrint("Error checking saved status: $e");
+    }
+  }
+
+  // 2. The Logic to Save/Unsave
+  Future<void> _toggleSaveJob() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please login to save jobs.")));
+      return;
+    }
+
+    // Optimistic UI Update (Change icon immediately)
+    setState(() => _isSaved = !_isSaved);
+
+    final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final savedJobRef = userRef.collection('saved').doc(widget.jobId);
+
+    try {
+      if (_isSaved) {
+        // A. SAVE THE JOB
+        await savedJobRef.set({
+          'jobId': widget.jobId,
+          'title': widget.job['title'],
+          'price': widget.job['price'] ?? "₱${widget.job['budgetMin']} - ₱${widget.job['budgetMax']}",
+          'category': widget.job['tag'] ?? "General",
+          'location': widget.job['location'],
+          'savedAt': FieldValue.serverTimestamp(),
+          // Store other details needed for the Saved list...
+        });
+
+        // B. Increment Dashboard Counter
+        await userRef.set({
+          'savedCount': FieldValue.increment(1)
+        }, SetOptions(merge: true));
+
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Job Saved!"), duration: Duration(seconds: 1)));
+
+      } else {
+        // A. REMOVE THE JOB
+        await savedJobRef.delete();
+
+        // B. Decrement Dashboard Counter
+        await userRef.set({
+          'savedCount': FieldValue.increment(-1)
+        }, SetOptions(merge: true));
+
+         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Job Removed from Saved."), duration: Duration(seconds: 1)));
+      }
+    } catch (e) {
+      // Revert if error
+      setState(() => _isSaved = !_isSaved);
+      debugPrint("Error toggling save: $e");
+    }
   }
 
   Future<void> _checkIfApplied() async {
@@ -66,7 +141,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     try {
       String applicantName = user.email?.split('@')[0] ?? "Applicant";
       
-      // 1. Try to get applicant name safely
       try {
         DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
         if (userDoc.exists) {
@@ -81,7 +155,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         debugPrint("Could not fetch user profile, using email name.");
       }
 
-      // 2. Add Notification
       await FirebaseFirestore.instance.collection('notifications').add({
         'recipientId': employerId,
         'title': 'New Applicant',
@@ -93,7 +166,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         'type': 'application',
       });
 
-      // 3. Add to My Applications
       await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('applications').add({
         'jobId': widget.jobId,
         'title': widget.job['title'],
@@ -103,7 +175,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         'employerId': employerId,
       });
 
-      // 4. FIX: Use SET with MERGE to update counter (Prevents "Not Found" error)
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'appliedCount': FieldValue.increment(1),
       }, SetOptions(merge: true));
@@ -136,7 +207,14 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         ),
         title: const Text("Job Details", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         actions: [
-          IconButton(icon: const Icon(Icons.bookmark_border, color: Colors.black), onPressed: () {}),
+          // --- UPDATED BOOKMARK BUTTON ---
+          IconButton(
+            icon: Icon(
+              _isSaved ? Icons.bookmark : Icons.bookmark_border, // Filled if saved
+              color: _isSaved ? const Color(0xFF2E7EFF) : Colors.black, // Blue if saved
+            ),
+            onPressed: _toggleSaveJob, // Calls our new function
+          ),
           IconButton(icon: const Icon(Icons.share_outlined, color: Colors.black), onPressed: () {}),
         ],
       ),
@@ -149,7 +227,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   
-                  // --- 1. HIRED / REJECTED BANNERS ---
                   if (widget.isHired)
                     Container(
                       width: double.infinity,
@@ -199,7 +276,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                       ),
                     ),
                   
-                  // --- 2. JOB HEADER ---
                   Text(
                     widget.job['title'] ?? "Job Title",
                     style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, height: 1.3),
@@ -212,7 +288,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                   ),
                   const SizedBox(height: 24),
 
-                  // --- 3. EMPLOYER CARD ---
                   StreamBuilder<DocumentSnapshot>(
                     stream: widget.job['posterId'] != null
                         ? FirebaseFirestore.instance.collection('users').doc(widget.job['posterId']).snapshots()
@@ -274,7 +349,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
 
                   const SizedBox(height: 24),
                   
-                  // --- 4. DETAILS GRID ---
                   Row(children: [
                     Expanded(child: _buildInfoCard(Icons.attach_money, "Budget", widget.job['price'] ?? "₱${widget.job['budgetMin']} - ₱${widget.job['budgetMax']}")),
                     const SizedBox(width: 12),
@@ -289,7 +363,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                   
                   const SizedBox(height: 30),
                   
-                  // --- 5. DESCRIPTION ---
                   const Text("Description", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
                   Text(
@@ -303,7 +376,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
             ),
           ),
 
-          // --- 6. BOTTOM ACTION BUTTON ---
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: Colors.grey.shade100))),
@@ -322,10 +394,8 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                 ),
                 const SizedBox(width: 16),
                 
-                // CONDITIONAL BUTTON LOGIC
                 Expanded(
                   child: widget.isHired
-                    // CASE A: HIRED -> "Message Employer"
                     ? ElevatedButton.icon(
                         onPressed: () {
                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Chat feature coming soon!")));
@@ -340,19 +410,17 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                         ),
                       )
                     : widget.isRejected
-                        // CASE B: REJECTED -> DISABLED "Rejected" (RED COLOR)
                         ? ElevatedButton(
                             onPressed: null, // Disabled
                             style: ElevatedButton.styleFrom(
-                              disabledBackgroundColor: Colors.red[50], // Light Red Background
-                              disabledForegroundColor: Colors.red,     // Red Text
+                              disabledBackgroundColor: Colors.red[50], 
+                              disabledForegroundColor: Colors.red,     
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               elevation: 0,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                             ),
                             child: const Text("Rejected", style: TextStyle(fontWeight: FontWeight.bold)), 
                           )
-                        // CASE C: DEFAULT -> "Apply Now" or "Applied"
                         : ElevatedButton(
                             onPressed: (_isApplying || _hasApplied) ? null : _applyForJob,
                             style: ElevatedButton.styleFrom(
