@@ -4,7 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'job_details_page.dart'; 
 
 class AppliedJobsPage extends StatefulWidget {
-  const AppliedJobsPage({super.key});
+  final bool showBackButton; // <--- The Dashboard needs this!
+
+  const AppliedJobsPage({super.key, this.showBackButton = true});
 
   @override
   State<AppliedJobsPage> createState() => _AppliedJobsPageState();
@@ -15,33 +17,27 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
   @override
   void initState() {
     super.initState();
-    // AUTOMATICALLY FIX THE COUNTER WHEN PAGE LOADS
     _syncApplicationCount();
   }
 
-  /// This function counts your REAL applications and updates the "9" to the correct number.
   Future<void> _syncApplicationCount() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
     try {
-      // 1. Count how many items are ACTUALLY in the list
       final query = await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .collection('applications')
-          .count() // Efficient counting
+          .count() 
           .get();
 
       final int actualCount = query.count ?? 0;
 
-      // 2. Force the User Profile to match the Real Count
       await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .update({'appliedCount': actualCount});
-      
-      // debugPrint("Synced count to: $actualCount");
     } catch (e) {
       debugPrint("Error syncing count: $e");
     }
@@ -56,10 +52,14 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
+        // --- FIX: Only show arrow if allowed ---
+        automaticallyImplyLeading: widget.showBackButton,
+        leading: widget.showBackButton 
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.black),
+              onPressed: () => Navigator.pop(context),
+            )
+          : null,
         title: const Text(
           "Applied Jobs", 
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)
@@ -80,7 +80,6 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
                 }
 
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  // If list is empty, run sync again just to be safe
                   if (snapshot.connectionState == ConnectionState.active) {
                      _syncApplicationCount(); 
                   }
@@ -123,7 +122,6 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
                       ),
                       
                       onDismissed: (direction) async {
-                        // 1. Delete from list
                         await FirebaseFirestore.instance
                             .collection('users')
                             .doc(uid)
@@ -131,7 +129,6 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
                             .doc(doc.id)
                             .delete();
                         
-                        // 2. Subtract 1 from the counter immediately
                         await FirebaseFirestore.instance
                             .collection('users')
                             .doc(uid)
@@ -215,17 +212,17 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
          final jobData = jobDoc.data() as Map<String, dynamic>;
          
          final Map<String, dynamic> jobMap = {
-            "title": jobData['title'] ?? "Job",
-            "tag": jobData['category'] ?? "General",
-            "price": "₱${jobData['budgetMin']} - ₱${jobData['budgetMax']}",
-            "location": jobData['location'] ?? "Remote",
-            "user": jobData['posterName'] ?? "Employer",
-            "posterId": jobData['postedBy'],
-            "rating": "New", 
-            "applicants": "${jobData['applicants'] ?? 0} applicants",
-            "duration": "3 days",
-            "isUrgent": jobData['isUrgent'] ?? false,
-            "description": jobData['description'] ?? "No description available.",
+           "title": jobData['title'] ?? "Job",
+           "tag": jobData['category'] ?? "General",
+           "price": "₱${jobData['budgetMin']} - ₱${jobData['budgetMax']}",
+           "location": jobData['location'] ?? "Remote",
+           "user": jobData['posterName'] ?? "Employer",
+           "posterId": jobData['postedBy'],
+           "rating": "New", 
+           "applicants": "${jobData['applicants'] ?? 0} applicants",
+           "duration": "3 days",
+           "isUrgent": jobData['isUrgent'] ?? false,
+           "description": jobData['description'] ?? "No description available.",
          };
 
          Navigator.push(

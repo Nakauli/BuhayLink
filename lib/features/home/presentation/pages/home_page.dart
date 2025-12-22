@@ -16,22 +16,19 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Get Current User ID
-    final user = FirebaseAuth.instance.currentUser;
-    final String currentUid = user?.uid ?? "Not Logged In";
+    final String? currentUid = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 102, 18, 18),
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text("Find Jobs (Debug Mode)", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color.fromARGB(255, 77, 138, 8),
+        title: const Text("Find Jobs", style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,
         automaticallyImplyLeading: false, 
       ),
       body: Column(
         children: [
-          // --- SEARCH BAR ---
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: TextField(
@@ -47,55 +44,33 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
 
-          // --- JOB LIST ---
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('jobs')
-                  .orderBy('postedAt', descending: true)
-                  .snapshots(),
+              // We use snapshots() directly to ensure we get the raw data
+              stream: FirebaseFirestore.instance.collection('jobs').orderBy('postedAt', descending: true).snapshots(),
               builder: (context, snapshot) {
-                // A. Loading State
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No jobs posted yet."));
 
-                // B. No Data
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text("No jobs posted yet."));
-                }
-
-                // --- FILTER LOGIC ---
                 final jobs = snapshot.data!.docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   
-                  // 1. Get Owner ID (We check 'postedBy' first, then others just in case)
-                  final String jobOwnerId = data['postedBy'] ?? data['recruiterId'] ?? data['uid'] ?? ""; 
+                  // 1. GET ID
+                  final String ownerId = data['postedBy'] ?? ""; 
 
-                  // 2. THE FILTER
-                  // Even if we filter it here, I will temporarily SHOW IT 
-                  // so you can see the Yellow Box and confirm the IDs.
-                  // Once fixed, we will uncomment the 'return false'.
-                  
-                  /* // UNCOMMENT THIS LATER TO ACTUALLY HIDE THEM
-                  if (jobOwnerId == currentUid) {
-                    return false; 
+                  // 2. FILTER
+                  if (ownerId == currentUid) {
+                    return false; // Hide my own jobs
                   }
-                  */
 
-                  // 3. Search Filter
-                  final String title = (data['title'] ?? data['jobTitle'] ?? "").toString().toLowerCase();
-                  if (_searchQuery.isNotEmpty && !title.contains(_searchQuery)) {
-                    return false;
-                  }
+                  // 3. SEARCH
+                  final String title = (data['title'] ?? "").toString().toLowerCase();
+                  if (_searchQuery.isNotEmpty && !title.contains(_searchQuery)) return false;
 
                   return true;
                 }).toList();
-                // --------------------
 
-                if (jobs.isEmpty) {
-                  return const Center(child: Text("No jobs found."));
-                }
+                if (jobs.isEmpty) return const Center(child: Text("No jobs found (All hidden or filtered)."));
 
                 return ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -114,23 +89,17 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // --- WIDGET WITH YELLOW DEBUG BOX ---
-  Widget _buildDebugJobCard(BuildContext context, Map<String, dynamic> job, String jobId, String myId) {
-    // Get the owner ID exactly as the app sees it
-    final String ownerId = job['postedBy'] ?? job['recruiterId'] ?? "Unknown";
-    
-    // Check if they match
-    final bool isMyJob = (ownerId == myId);
+  // --- DEBUG CARD ---
+  Widget _buildDebugJobCard(BuildContext context, Map<String, dynamic> job, String jobId, String? myId) {
+    final String ownerId = job['postedBy'] ?? "Unknown";
 
     return GestureDetector(
       onTap: () {
-        Navigator.push(
-          context, 
-          MaterialPageRoute(builder: (_) => JobDetailsPage(jobId: jobId, job: job))
-        );
+        Navigator.push(context, MaterialPageRoute(builder: (_) => JobDetailsPage(jobId: jobId, job: job)));
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -139,72 +108,23 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ---------------------------------------------------------
-            // 🟡 THE YELLOW DEBUG BOX 🟡
-            // Look at this box on your screen!
+            // --- VISUAL DEBUGGER (Remove this later) ---
             Container(
-              width: double.infinity,
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isMyJob ? Colors.red.shade100 : Colors.yellow.shade100,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16), 
-                  topRight: Radius.circular(16)
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("🕵️‍♀️ DEBUG INFO:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                  Text("Job Owner ID: $ownerId"),
-                  Text("My Current ID:  $myId"),
-                  const SizedBox(height: 4),
-                  Text(
-                    isMyJob ? "⚠️ THIS IS MY JOB (Should be hidden)" : "✅ NOT MY JOB (Safe to show)",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold, 
-                      color: isMyJob ? Colors.red : Colors.green[800]
-                    ),
-                  ),
-                ],
+              width: double.infinity,
+              color: Colors.yellow.shade100,
+              child: Text(
+                "DEBUG MODE:\nOwner ID: $ownerId\nMy ID:    $myId",
+                style: const TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold, fontFamily: "monospace"),
               ),
             ),
-            // ---------------------------------------------------------
+            const SizedBox(height: 8),
+            // -------------------------------------------
 
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(color: Colors.blue.shade50, shape: BoxShape.circle),
-                        child: const Icon(Icons.business, color: Colors.blue),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(job['title'] ?? job['jobTitle'] ?? "No Title", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            Text("Budget: ₱${job['budgetMin'] ?? 0} - ₱${job['budgetMax'] ?? 0}", style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    job['description'] ?? "No description provided.",
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-            ),
+            Text(job['title'] ?? "No Title", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Text("Budget: ₱${job['budgetMin']} - ₱${job['budgetMax']}", style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Text(job['description'] ?? "No description", maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey[600])),
           ],
         ),
       ),

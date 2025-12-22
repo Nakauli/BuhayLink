@@ -36,12 +36,23 @@ class _DashboardPageState extends State<DashboardPage> {
         selectedItemColor: const Color(0xFF2E7EFF),
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: true,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: "Search"),
-          BottomNavigationBarItem(icon: Icon(Icons.add_circle, size: 40, color: Color(0xFF2E7EFF)), label: "Post"),
-          BottomNavigationBarItem(icon: Icon(Icons.message), label: "Messages"),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+        items: [
+          const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+          const BottomNavigationBarItem(icon: Icon(Icons.search), label: "Search"),
+          
+          // --- DYNAMIC MIDDLE BUTTON ---
+          BottomNavigationBarItem(
+            icon: Icon(
+              _showMyPosts ? Icons.add_circle : Icons.assignment, 
+              size: 40, 
+              color: const Color(0xFF2E7EFF)
+            ), 
+            label: _showMyPosts ? "Post" : "Applied"
+          ),
+          // -----------------------------
+
+          const BottomNavigationBarItem(icon: Icon(Icons.message), label: "Messages"),
+          const BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
         ],
       ),
     );
@@ -98,7 +109,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   // --- SPECIFIC NOTIFICATION BELL ---
                   GestureDetector(
                     onTap: () {
-                       // Pass the current mode (_showMyPosts) to the Notifications Page
                        Navigator.push(
                          context, 
                          MaterialPageRoute(
@@ -112,31 +122,22 @@ class _DashboardPageState extends State<DashboardPage> {
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
                       child: StreamBuilder<QuerySnapshot>(
-                        // 1. Listen to ALL relevant notifications (Personal + Global)
                         stream: FirebaseFirestore.instance
                             .collection('notifications')
                             .where('recipientId', whereIn: [uid, 'all'])
                             .snapshots(),
                         builder: (context, snapshot) {
                           int unreadCount = 0;
-
                           if (snapshot.hasData) {
-                            // 2. Filter Client-Side based on Mode
                             unreadCount = snapshot.data!.docs.where((doc) {
                               final data = doc.data() as Map<String, dynamic>;
-                              
-                              // Check Read Status
                               if (data['read'] == true) return false;
-
                               final String type = data['type'] ?? 'application';
                               final String posterId = data['posterId'] ?? "";
 
                               if (_showMyPosts) {
-                                // EMPLOYER MODE: Only count 'application' (New Applicant)
                                 return type == 'application';
                               } else {
-                                // APPLICANT MODE: Only count 'hired', 'rejected', 'new_post'
-                                // (And ignore new_post if *I* was the one who posted it)
                                 if (type == 'new_post') return posterId != uid;
                                 return ['hired', 'rejected'].contains(type);
                               }
@@ -202,7 +203,7 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
 
-        // REST OF THE DASHBOARD (Search, Filter, List)
+        // REST OF THE DASHBOARD
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: TextField(
@@ -253,7 +254,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
               var docs = snapshot.data!.docs;
 
-              // --- FIX: HIDE MY OWN POSTS IN FIND JOBS MODE ---
+              // --- FILTER OUT MY OWN POSTS IN FIND JOBS ---
               final currentUid = FirebaseAuth.instance.currentUser?.uid;
               if (!_showMyPosts && currentUid != null) {
                 docs = docs.where((doc) {
@@ -261,7 +262,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   return data['postedBy'] != currentUid;
                 }).toList();
               }
-              // -----------------------------------------------
+              // --------------------------------------------
 
               if (_searchQuery.isNotEmpty) {
                 docs = docs.where((doc) {
@@ -298,7 +299,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     "applicants": "${data['applicants'] ?? 0} applicants",
                     "duration": "3 days", 
                     "isUrgent": data['isUrgent'] ?? false,
-                    "description": data['description'] ?? "No description.", // Added fallback description
+                    "description": data['description'] ?? "No description.",
                   };
 
                   return GestureDetector(
@@ -320,7 +321,14 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _getBodyContent() {
     switch (_selectedIndex) {
       case 1: return const SearchPage();
-      case 2: return const AddJobPage();
+      
+      // --- DYNAMIC PAGE LOADING ---
+      // Pass showBackButton: false so they don't crash the dashboard
+      case 2: return _showMyPosts 
+          ? const AddJobPage(showBackButton: false)
+          : const AppliedJobsPage(showBackButton: false);
+      // ----------------------------
+
       case 3: return const MessagesPage();
       case 4: return const ProfilePage();
       default: return const Center(child: Text("Page Not Found"));

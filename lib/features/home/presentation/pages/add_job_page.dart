@@ -3,7 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class AddJobPage extends StatefulWidget {
-  const AddJobPage({super.key});
+  final bool showBackButton; // <--- The Dashboard needs this!
+
+  const AddJobPage({super.key, this.showBackButton = true});
 
   @override
   State<AddJobPage> createState() => _AddJobPageState();
@@ -33,7 +35,6 @@ class _AddJobPageState extends State<AddJobPage> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
 
-      // 1. Get Poster Name
       String posterName = "Employer"; 
       final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       if (userDoc.exists) {
@@ -41,7 +42,6 @@ class _AddJobPageState extends State<AddJobPage> {
         posterName = data?['fullName'] ?? data?['firstName'] ?? data?['username'] ?? user.email!.split('@')[0];
       }
 
-      // 2. SAVE JOB TO FIREBASE
       DocumentReference jobRef = await FirebaseFirestore.instance.collection('jobs').add({
         'title': _titleController.text.trim(),
         'description': _descController.text.trim(),
@@ -59,22 +59,19 @@ class _AddJobPageState extends State<AddJobPage> {
         'status': 'open',
       });
 
-      // 3. SEND NOTIFICATION TO 'ALL' (This enables the alert!)
       await FirebaseFirestore.instance.collection('notifications').add({
-        'recipientId': 'all',          // <--- Send to everyone
+        'recipientId': 'all',
         'title': 'New Job Opportunity',
         'message': "New job posted: ${_titleController.text.trim()}",
-        'type': 'new_post',            // <--- Type we filter for
+        'type': 'new_post',
         'jobId': jobRef.id,
-        'posterId': user.uid,          // <--- So you don't notify yourself
+        'posterId': user.uid,
         'timestamp': FieldValue.serverTimestamp(),
         'read': false,
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Job Posted Successfully!"), backgroundColor: Colors.green));
-        
-        // Reset form
         _titleController.clear();
         _descController.clear();
         _minBudgetController.clear();
@@ -99,6 +96,14 @@ class _AddJobPageState extends State<AddJobPage> {
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        // --- FIX: Only show arrow if allowed ---
+        automaticallyImplyLeading: widget.showBackButton,
+        leading: widget.showBackButton 
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.black), 
+              onPressed: () => Navigator.pop(context)
+            ) 
+          : null,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
