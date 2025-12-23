@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+// IMPORT YOUR REPOSITORY
+import '../../../jobs/data/repositories/job_repository.dart'; 
 import 'public_profile_page.dart'; 
 import 'job_applicants_page.dart'; 
 
@@ -23,6 +25,9 @@ class JobDetailsPage extends StatefulWidget {
 }
 
 class _JobDetailsPageState extends State<JobDetailsPage> {
+  // 1. Instantiate the Repository
+  final JobRepository _jobRepository = JobRepository();
+
   bool _isApplying = false;
   bool _hasApplied = false;
   bool _isSaved = false; 
@@ -30,84 +35,39 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
   @override
   void initState() {
     super.initState();
-    _checkIfApplied();
-    _checkIfSaved();
+    _loadInitialState();
   }
 
-  // --- LOGIC: CHECK IF SAVED ---
-  Future<void> _checkIfSaved() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('saved').doc(widget.jobId).get();
-      if (doc.exists && mounted) setState(() => _isSaved = true);
-    } catch (e) { debugPrint("$e"); }
+  Future<void> _loadInitialState() async {
+    final applied = await _jobRepository.hasApplied(widget.jobId);
+    final saved = await _jobRepository.isJobSaved(widget.jobId);
+    if (mounted) {
+      setState(() {
+        _hasApplied = applied;
+        _isSaved = saved;
+      });
+    }
   }
 
-  // --- LOGIC: TOGGLE SAVE ---
   Future<void> _toggleSaveJob() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    // Optimistic Update (UI updates instantly)
     setState(() => _isSaved = !_isSaved);
-    final savedJobRef = FirebaseFirestore.instance.collection('users').doc(user.uid).collection('saved').doc(widget.jobId);
-    try {
-      if (_isSaved) {
-        await savedJobRef.set({
-          'jobId': widget.jobId,
-          'title': widget.job['title'],
-          'price': widget.job['price'] ?? "₱${widget.job['budgetMin']} - ₱${widget.job['budgetMax']}",
-          'category': widget.job['tag'] ?? "General",
-          'location': widget.job['location'],
-          'savedAt': FieldValue.serverTimestamp(),
-        });
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({'savedCount': FieldValue.increment(1)}, SetOptions(merge: true));
-      } else {
-        await savedJobRef.delete();
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({'savedCount': FieldValue.increment(-1)}, SetOptions(merge: true));
-      }
-    } catch (e) { setState(() => _isSaved = !_isSaved); }
-  }
-
-  // --- LOGIC: CHECK IF ALREADY APPLIED ---
-  Future<void> _checkIfApplied() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    try {
-      final query = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('applications').where('jobId', isEqualTo: widget.jobId).get();
-      if (query.docs.isNotEmpty && mounted) setState(() => _hasApplied = true);
-    } catch (e) {}
-  }
-
-  // --- LOGIC: APPLY FOR JOB ---
-  Future<void> _applyForJob() async {
-    setState(() => _isApplying = true);
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    final String employerId = widget.job['posterId'] ?? "";
     
     try {
-      String applicantName = user.email?.split('@')[0] ?? "Applicant";
-      
-       await FirebaseFirestore.instance.collection('notifications').add({
-        'recipientId': employerId,
-        'title': 'New Applicant',
-        'message': "$applicantName has applied for: ${widget.job['title']}",
-        'applicantId': user.uid,
-        'jobId': widget.jobId,
-        'read': false,
-        'timestamp': FieldValue.serverTimestamp(),
-        'type': 'application',
-      });
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('applications').add({
-        'jobId': widget.jobId,
-        'title': widget.job['title'],
-        'price': widget.job['price'] ?? "0",
-        'timestamp': FieldValue.serverTimestamp(),
-        'status': 'Applied',
-        'employerId': employerId,
-      });
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({'appliedCount': FieldValue.increment(1)}, SetOptions(merge: true));
-      await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).update({'applicants': FieldValue.increment(1)});
+      // Logic delegated to Repository
+      await _jobRepository.toggleSaveJob(widget.jobId, widget.job, !_isSaved);
+    } catch (e) {
+      // Revert if error
+      if (mounted) setState(() => _isSaved = !_isSaved);
+      debugPrint("Error: $e");
+    }
+  }
+
+  Future<void> _applyForJob() async {
+    setState(() => _isApplying = true);
+    
+    try {
+      await _jobRepository.applyForJob(widget.jobId, widget.job);
       
       setState(() => _hasApplied = true);
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Application Sent!"), backgroundColor: Colors.green));
@@ -120,7 +80,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. ROBUST OWNER CHECK (Converts to String to be safe)
+    // 1. ROBUST OWNER CHECK
     final currentUser = FirebaseAuth.instance.currentUser;
     final String currentUid = currentUser?.uid ?? "";
     final String posterId = (widget.job['posterId'] ?? "").toString();
