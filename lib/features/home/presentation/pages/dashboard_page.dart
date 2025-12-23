@@ -10,6 +10,8 @@ import 'job_details_page.dart';
 import 'applied_jobs_page.dart';
 import 'hired_jobs_page.dart'; // NEW
 import 'saved_jobs_page.dart'; // NEW
+import 'my_posted_jobs_page.dart';
+import 'public_profile_page.dart'; // Ensure this is imported for the Ratings box
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -132,11 +134,11 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
               const SizedBox(height: 24),
 
+
               // --- DYNAMIC STATS BOXES ---
               // 1. EMPLOYER MODE (My Posts)
               if (_showMyPosts)
                  StreamBuilder<QuerySnapshot>(
-                   // Count all my jobs
                    stream: FirebaseFirestore.instance.collection('jobs').where('postedBy', isEqualTo: uid).snapshots(),
                    builder: (context, snapshot) {
                      int active = 0;
@@ -154,10 +156,37 @@ class _DashboardPageState extends State<DashboardPage> {
                      return Row(
                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                        children: [
-                         _buildStatCard(active.toString(), "Active", Icons.work_outline),
-                         _buildStatCard(hired.toString(), "Hired", Icons.handshake_rounded),
-                         _buildStatCard("4.5", "Ratings", Icons.star_rounded), 
-                         _buildStatCard(total.toString(), "Total Posts", Icons.list_alt_rounded),
+                         // 1. ACTIVE JOBS -> Navigate to MyPostedJobsPage (Filter: open)
+                         _buildStatCard(
+                           active.toString(), 
+                           "Active", 
+                           Icons.work_outline,
+                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MyPostedJobsPage(title: "Active Jobs", statusFilter: ['open'])))
+                         ),
+                         
+                         // 2. HIRED JOBS -> Navigate to MyPostedJobsPage (Filter: hired/closed)
+                         _buildStatCard(
+                           hired.toString(), 
+                           "Hired", 
+                           Icons.handshake_rounded,
+                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MyPostedJobsPage(title: "Hired History", statusFilter: ['hired', 'closed'])))
+                         ),
+                         
+                         // 3. RATINGS -> Go to Public Profile (See yourself as others see you)
+                         _buildStatCard(
+                           "4.5", 
+                           "Ratings", 
+                           Icons.star_rounded,
+                           onTap: uid != null ? () => Navigator.push(context, MaterialPageRoute(builder: (context) => PublicProfilePage(userId: uid, userName: "Me"))) : null
+                         ), 
+                         
+                         // 4. TOTAL -> Navigate to MyPostedJobsPage (No Filter = All)
+                         _buildStatCard(
+                           total.toString(), 
+                           "Total Posts", 
+                           Icons.list_alt_rounded,
+                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MyPostedJobsPage(title: "All Posts", statusFilter: [])))
+                         ),
                        ],
                      );
                    }
