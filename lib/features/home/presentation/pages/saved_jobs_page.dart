@@ -46,16 +46,14 @@ class SavedJobsPage extends StatelessWidget {
                 itemCount: snapshot.data!.docs.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
-                  final doc = snapshot.data!.docs[index]; // Get the document
+                  final doc = snapshot.data!.docs[index];
                   final data = doc.data() as Map<String, dynamic>;
                   final String jobId = data['jobId'] ?? "";
                   
-                  // --- SWIPE TO DELETE FEATURE ---
                   return Dismissible(
-                    key: Key(jobId), // Unique ID for this row
-                    direction: DismissDirection.endToStart, // Swipe Right to Left
+                    key: Key(jobId),
+                    direction: DismissDirection.endToStart,
                     
-                    // 1. CONFIRMATION POPUP
                     confirmDismiss: (direction) async {
                       return await showDialog(
                         context: context,
@@ -66,11 +64,11 @@ class SavedJobsPage extends StatelessWidget {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                             actions: [
                               TextButton(
-                                onPressed: () => Navigator.of(context).pop(false), // Cancel
+                                onPressed: () => Navigator.of(context).pop(false),
                                 child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
                               ),
                               TextButton(
-                                onPressed: () => Navigator.of(context).pop(true), // Confirm
+                                onPressed: () => Navigator.of(context).pop(true),
                                 child: const Text("Remove", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                               ),
                             ],
@@ -93,30 +91,26 @@ class SavedJobsPage extends StatelessWidget {
                         children: [
                           Text("Remove", style: TextStyle(color: Colors.red[700], fontWeight: FontWeight.bold)),
                           const SizedBox(width: 8),
-                          Icon(Icons.bookmark_remove, color: Colors.red[700], size: 26),
+                          // --- UPDATED ICON ---
+                          Icon(Icons.delete, color: Colors.red[700], size: 26), 
                         ],
                       ),
                     ),
 
-                    // 3. ACTUAL DELETE LOGIC
                     onDismissed: (direction) async {
-                      // A. Remove from 'saved' collection
                       await FirebaseFirestore.instance
                           .collection('users')
                           .doc(uid)
                           .collection('saved')
-                          .doc(jobId) // Be sure to use the correct Doc ID (usually jobId)
+                          .doc(jobId)
                           .delete();
 
-                      // B. Decrement the counter on Dashboard
                       await FirebaseFirestore.instance
                           .collection('users')
                           .doc(uid)
                           .set({
                             'savedCount': FieldValue.increment(-1)
                           }, SetOptions(merge: true));
-
-                      // Optional: Show "Undo" snackbar if you want
                     },
 
                     child: Card(
