@@ -45,11 +45,63 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     }
   }
 
+  // --- FEATURE: Attachment Menu (Plus Button) ---
+  void _showAttachmentOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildAttachmentOption(Icons.image, "Gallery", Colors.blue),
+                _buildAttachmentOption(Icons.camera_alt, "Camera", Colors.pink),
+                _buildAttachmentOption(Icons.description, "File", Colors.orange),
+                _buildAttachmentOption(Icons.location_on, "Location", Colors.green),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttachmentOption(IconData icon, String label, Color color) {
+    return InkWell(
+      onTap: () {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label feature coming soon!")));
+      },
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 28),
+          ),
+          const SizedBox(height: 8),
+          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB), // Softer background color
-      appBar: _buildModernAppBar(),
+      backgroundColor: const Color(0xFFF5F7FB), // Modern light grey background
+      appBar: _buildFunctionalAppBar(),
       body: Column(
         children: [
           // 1. REAL-TIME MESSAGE LIST
@@ -70,9 +122,8 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                     final data = messages[index].data() as Map<String, dynamic>;
                     bool isMe = data['senderId'] == _currentUserId;
                     
-                    // Check if we should show the avatar (only for the receiver)
+                    // Logic to hide avatar if consecutive messages from same user
                     bool showAvatar = !isMe;
-                    // Optimization: Only show avatar if previous message was from different user
                     if (index > 0) {
                       final prevData = messages[index - 1].data() as Map<String, dynamic>;
                       if (prevData['senderId'] == data['senderId']) {
@@ -87,7 +138,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
             ),
           ),
 
-          // 2. MODERN INPUT BAR
+          // 2. INPUT BAR with Plus Button
           _buildInputBar(),
         ],
       ),
@@ -96,7 +147,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
 
   // --- UI WIDGETS ---
 
-  PreferredSizeWidget _buildModernAppBar() {
+  PreferredSizeWidget _buildFunctionalAppBar() {
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 1,
@@ -104,14 +155,17 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       leading: const BackButton(color: Colors.black),
       titleSpacing: 0,
       title: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(widget.receiverId).snapshots(),
+        // SOLID: Using Repository for status stream
+        stream: _chatRepository.getUserStatusStream(widget.receiverId),
         builder: (context, snapshot) {
           String name = widget.receiverName;
-          bool isActive = true; // You can hook this to real status later
+          bool isOnline = false;
 
           if (snapshot.hasData && snapshot.data!.exists) {
             final data = snapshot.data!.data() as Map<String, dynamic>;
             name = data['fullName'] ?? data['firstName'] ?? name;
+            // The logic: if 'isOnline' field exists and is true, show green
+            isOnline = data['isOnline'] ?? false; 
           }
 
           return Row(
@@ -121,9 +175,10 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                   CircleAvatar(
                     radius: 20,
                     backgroundColor: Colors.blue.shade100,
-                    child: Text(name[0].toUpperCase(), style: TextStyle(color: Colors.blue.shade800, fontWeight: FontWeight.bold)),
+                    child: Text(name.isNotEmpty ? name[0].toUpperCase() : "?", style: TextStyle(color: Colors.blue.shade800, fontWeight: FontWeight.bold)),
                   ),
-                  if (isActive)
+                  // FEATURE: Green Circle
+                  if (isOnline)
                     Positioned(
                       right: 0,
                       bottom: 0,
@@ -143,7 +198,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(name, style: const TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.bold)),
-                  const Text("Active now", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.w400)),
+                  Text(isOnline ? "Active now" : "Offline", style: TextStyle(color: isOnline ? Colors.green : Colors.grey, fontSize: 12, fontWeight: FontWeight.w400)),
                 ],
               ),
             ],
@@ -151,8 +206,19 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         },
       ),
       actions: [
-        IconButton(icon: const Icon(Icons.phone, color: Colors.blue), onPressed: () {}),
-        IconButton(icon: const Icon(Icons.info_outline, color: Colors.black54), onPressed: () {}),
+        // FEATURE: Call Buttons
+        IconButton(
+          icon: const Icon(Icons.call, color: Color(0xFF2E7EFF)), 
+          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Voice Call coming soon!")))
+        ),
+        IconButton(
+          icon: const Icon(Icons.videocam, color: Color(0xFF2E7EFF)), 
+          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Video Call coming soon!")))
+        ),
+        IconButton(
+          icon: const Icon(Icons.info_outline, color: Colors.black54), 
+          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Chat Info")))
+        ),
       ],
     );
   }
@@ -169,10 +235,10 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
               CircleAvatar(
                 radius: 14,
                 backgroundColor: Colors.grey[300],
-                child: Text(widget.receiverName[0].toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.black54)),
+                child: Text(widget.receiverName.isNotEmpty ? widget.receiverName[0].toUpperCase() : "?", style: const TextStyle(fontSize: 10, color: Colors.black54)),
               )
             else
-              const SizedBox(width: 28), // Spacer to align text
+              const SizedBox(width: 28), // Spacer
             const SizedBox(width: 8),
           ],
 
@@ -180,7 +246,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                // Gradient for sender, solid grey for receiver
+                // Gradient for me, White for them
                 gradient: isMe 
                   ? const LinearGradient(colors: [Color(0xFF2E7EFF), Color(0xFF0052CC)]) 
                   : null,
@@ -212,7 +278,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
 
   Widget _buildInputBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
@@ -220,7 +286,11 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       child: SafeArea(
         child: Row(
           children: [
-            IconButton(icon: const Icon(Icons.add_circle, color: Color(0xFF2E7EFF), size: 28), onPressed: () {}),
+            // FEATURE: Plus Button (Attachments)
+            IconButton(
+              icon: const Icon(Icons.add_circle, color: Color(0xFF2E7EFF), size: 30), 
+              onPressed: _showAttachmentOptions
+            ),
             Expanded(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
