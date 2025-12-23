@@ -20,13 +20,23 @@ class JobRepository {
 
   // --- EXISTING METHODS (Maintained for Dashboard) ---
   Stream<List<JobModel>> getJobs() => _service.getJobs();
-  
-  // SOLID: Refactored to handle the full model logic
   Future<void> addJob(JobModel job) => _service.addJob(job);
 
   // --- REFACTORED METHODS (SOLID & Rubric Compliant) ---
 
-  // 3. POST A NEW JOB (Moved from AddJobPage to satisfy SRP)
+  // 3. GET APPLICATIONS STREAM (Moved from AppliedJobsPage)
+  Stream<QuerySnapshot> getApplicationsStream() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return const Stream.empty();
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('applications')
+        .orderBy('timestamp', descending: true)
+        .snapshots();
+  }
+
+  // 4. POST A NEW JOB (SRP: UI only collects data, Repo saves it)
   Future<void> postJob({
     required String title,
     required String description,
@@ -40,7 +50,6 @@ class JobRepository {
     final user = _auth.currentUser;
     if (user == null) throw Exception("User not logged in");
 
-    // Fetch poster identity
     String posterName = "Employer";
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
     if (userDoc.exists) {
@@ -48,7 +57,6 @@ class JobRepository {
       posterName = data?['fullName'] ?? data?['firstName'] ?? data?['username'] ?? user.email!.split('@')[0];
     }
 
-    // Transaction: Add Job
     DocumentReference jobRef = await _firestore.collection('jobs').add({
       'title': title,
       'description': description,
@@ -66,7 +74,6 @@ class JobRepository {
       'status': 'open',
     });
 
-    // Transaction: Create Global Notification
     await _firestore.collection('notifications').add({
       'recipientId': 'all',
       'title': 'New Job Opportunity',
@@ -79,7 +86,30 @@ class JobRepository {
     });
   }
 
-  // 4. TOGGLE SAVE (Consolidated Transaction)
+  // 5. WITHDRAW APPLICATION (Atomic Transaction using WriteBatch)
+  Future<void> withdrawApplication(String docId) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw Exception("User not logged in");
+
+    WriteBatch batch = _firestore.batch();
+    
+    DocumentReference appDoc = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('applications')
+        .doc(docId);
+    
+    DocumentReference userDoc = _firestore.collection('users').doc(uid);
+
+    batch.delete(appDoc);
+    batch.set(userDoc, {
+      'appliedCount': FieldValue.increment(-1)
+    }, SetOptions(merge: true));
+
+    await batch.commit();
+  }
+
+  // 6. TOGGLE SAVE (Consolidated Transaction)
   Future<void> toggleSaveJob(String jobId, Map<String, dynamic> jobData, bool isCurrentlySaved) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception("User not logged in");
@@ -103,7 +133,7 @@ class JobRepository {
     }
   }
 
-  // 5. CHECK STATUS HELPERS
+  // 7. CHECK STATUS HELPERS
   Future<bool> isJobSaved(String jobId) async {
     final user = _auth.currentUser;
     if (user == null) return false;
@@ -119,7 +149,7 @@ class JobRepository {
     return query.docs.isNotEmpty;
   }
 
-  // 6. APPLY FOR JOB (Transaction Logic)
+  // 8. APPLY FOR JOB (Transactional Logic)
   Future<void> applyForJob(String jobId, Map<String, dynamic> jobData) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception("User not logged in");
@@ -127,7 +157,6 @@ class JobRepository {
     final String employerId = jobData['posterId'] ?? "";
     String applicantName = user.email?.split('@')[0] ?? "Applicant";
 
-    // Batch or multi-write for notifications and records
     await _firestore.collection('notifications').add({
       'recipientId': employerId,
       'title': 'New Applicant',
@@ -148,8 +177,26 @@ class JobRepository {
       'employerId': employerId,
     });
 
-    // Update Counters
     await _firestore.collection('users').doc(user.uid).update({'appliedCount': FieldValue.increment(1)});
     await _firestore.collection('jobs').doc(jobId).update({'applicants': FieldValue.increment(1)});
+  }
+
+  // 9. SYNC COUNTS (Moved from UI for SRP)
+  Future<void> syncApplicationCount() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+
+    final query = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('applications')
+        .count()
+        .get();
+
+    final int actualCount = query.count ?? 0;
+
+    await _firestore.collection('users').doc(uid).set({
+      'appliedCount': actualCount
+    }, SetOptions(merge: true));
   }
 }
