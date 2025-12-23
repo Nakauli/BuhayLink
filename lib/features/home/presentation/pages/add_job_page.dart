@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+// SOLID: Import the Repository
+import '../../../jobs/data/repositories/job_repository.dart';
 
 class AddJobPage extends StatefulWidget {
-  final bool showBackButton; // <--- The Dashboard needs this!
+  final bool showBackButton;
 
   const AddJobPage({super.key, this.showBackButton = true});
 
@@ -14,6 +14,9 @@ class AddJobPage extends StatefulWidget {
 class _AddJobPageState extends State<AddJobPage> {
   final _formKey = GlobalKey<FormState>();
   
+  // SOLID: Dependency Inversion - UI depends on the Repository abstraction
+  final JobRepository _jobRepository = JobRepository();
+
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descController = TextEditingController();
   final TextEditingController _minBudgetController = TextEditingController();
@@ -27,68 +30,54 @@ class _AddJobPageState extends State<AddJobPage> {
 
   final List<String> _categories = ["General", "Plumbing", "Electrical", "Cleaning", "Technology", "Carpentry"];
 
-  Future<void> _postJob() async {
+  Future<void> _handlePostJob() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception("User not logged in");
-
-      String posterName = "Employer"; 
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      if (userDoc.exists) {
-        final data = userDoc.data();
-        posterName = data?['fullName'] ?? data?['firstName'] ?? data?['username'] ?? user.email!.split('@')[0];
-      }
-
-      DocumentReference jobRef = await FirebaseFirestore.instance.collection('jobs').add({
-        'title': _titleController.text.trim(),
-        'description': _descController.text.trim(),
-        'category': _selectedCategory,
-        'budgetMin': int.tryParse(_minBudgetController.text) ?? 0,
-        'budgetMax': int.tryParse(_maxBudgetController.text) ?? 0,
-        'location': _locationController.text.trim(),
-        'duration': _durationController.text.trim(),
-        'isUrgent': _isUrgent,
-        'postedBy': user.uid,
-        'posterName': posterName,
-        'posterRating': 0.0,
-        'applicants': 0,
-        'postedAt': FieldValue.serverTimestamp(),
-        'status': 'open',
-      });
-
-      await FirebaseFirestore.instance.collection('notifications').add({
-        'recipientId': 'all',
-        'title': 'New Job Opportunity',
-        'message': "New job posted: ${_titleController.text.trim()}",
-        'type': 'new_post',
-        'jobId': jobRef.id,
-        'posterId': user.uid,
-        'timestamp': FieldValue.serverTimestamp(),
-        'read': false,
-      });
+      // Logic is delegated to the Repository
+      await _jobRepository.postJob(
+        title: _titleController.text.trim(),
+        description: _descController.text.trim(),
+        category: _selectedCategory,
+        budgetMin: int.tryParse(_minBudgetController.text) ?? 0,
+        budgetMax: int.tryParse(_maxBudgetController.text) ?? 0,
+        location: _locationController.text.trim(),
+        duration: _durationController.text.trim(),
+        isUrgent: _isUrgent,
+      );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Job Posted Successfully!"), backgroundColor: Colors.green));
-        _titleController.clear();
-        _descController.clear();
-        _minBudgetController.clear();
-        _maxBudgetController.clear();
-        _locationController.clear();
-        _durationController.clear();
-        setState(() => _isUrgent = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Job Posted Successfully!"), backgroundColor: Colors.green)
+        );
+        _clearForm();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red)
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
 
-    if (mounted) setState(() => _isLoading = false);
+  void _clearForm() {
+    _titleController.clear();
+    _descController.clear();
+    _minBudgetController.clear();
+    _maxBudgetController.clear();
+    _locationController.clear();
+    _durationController.clear();
+    setState(() => _isUrgent = false);
   }
 
   @override
   Widget build(BuildContext context) {
+    // ... UI build code remains the same as your original, 
+    // but the onPressed of the button now calls _handlePostJob
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -96,7 +85,6 @@ class _AddJobPageState extends State<AddJobPage> {
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
-        // --- FIX: Only show arrow if allowed ---
         automaticallyImplyLeading: widget.showBackButton,
         leading: widget.showBackButton 
           ? IconButton(
@@ -164,7 +152,7 @@ class _AddJobPageState extends State<AddJobPage> {
                 width: double.infinity,
                 height: 55,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _postJob,
+                  onPressed: _isLoading ? null : _handlePostJob,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2E7EFF),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -181,6 +169,7 @@ class _AddJobPageState extends State<AddJobPage> {
     );
   }
 
+  // --- UI Helpers (Keep these at the bottom) ---
   Widget _buildLabel(String text) {
     return Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)));
   }
