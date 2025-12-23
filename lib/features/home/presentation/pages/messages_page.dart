@@ -1,4 +1,9 @@
+import 'package:buhay_link/features/jobs/data/repositories/chat_repository.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+// SOLID: Dependency Inversion - UI depends on the Repository
+
 import 'chat_detail_page.dart';
 
 class MessagesPage extends StatefulWidget {
@@ -9,188 +14,99 @@ class MessagesPage extends StatefulWidget {
 }
 
 class _MessagesPageState extends State<MessagesPage> {
-  final TextEditingController _searchController = TextEditingController();
-
-  // Mock Data based on your screenshot
-  final List<Map<String, dynamic>> _conversations = [
-    {
-      "name": "Maria Santos",
-      "message": "When can you start the plumbing work?",
-      "jobTag": "Kitchen Plumbing Repair",
-      "time": "10:30 AM",
-      "unreadCount": 2,
-      "avatarColor": const Color(0xFF5F60FF), // Blue-ish
-    },
-    {
-      "name": "Juan dela Cruz",
-      "message": "Thanks for applying! Can we discuss the timeline?",
-      "jobTag": "Custom Furniture",
-      "time": "Yesterday",
-      "unreadCount": 0,
-      "avatarColor": const Color(0xFF9845FF), // Purple-ish
-    },
-    {
-      "name": "Ana Reyes",
-      "message": "I sent you the updated requirements",
-      "jobTag": "House Painting",
-      "time": "2 days ago",
-      "unreadCount": 1,
-      "avatarColor": const Color(0xFF5F60FF),
-    },
-  ];
+  final ChatRepository _chatRepository = ChatRepository();
+  final String _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? "";
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 20),
-            
-            // --- 1. HEADER ---
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24),
-              child: Text("Messages", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(height: 16),
-
-            // --- 2. SEARCH BAR ---
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: "Search conversations...",
-                  hintStyle: TextStyle(color: Colors.grey[400]),
-                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  // Blue border when focused, Grey when not (like screenshot)
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide(color: Colors.grey.shade300)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide(color: Colors.grey.shade300)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: const BorderSide(color: Color(0xFF2E7EFF))),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // --- 3. CONVERSATION LIST ---
-            Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                itemCount: _conversations.length,
-                separatorBuilder: (_, __) => Divider(color: Colors.grey.shade100, height: 1),
-                itemBuilder: (context, index) {
-                  final chat = _conversations[index];
-                  return _buildConversationItem(chat);
-                },
-              ),
-            ),
-          ],
-        ),
+      appBar: AppBar(
+        title: const Text("Messages", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        automaticallyImplyLeading: false,
       ),
+      body: _currentUserId.isEmpty
+          ? const Center(child: Text("Please login to see messages"))
+          : StreamBuilder<QuerySnapshot>(
+              stream: _chatRepository.getAllChatRoomsStream(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.chat_bubble_outline, size: 80, color: Colors.grey[300]),
+                        const SizedBox(height: 16),
+                        const Text("No conversations yet", style: TextStyle(color: Colors.grey)),
+                      ],
+                    ),
+                  );
+                }
+
+                final chatRooms = snapshot.data!.docs;
+
+                return ListView.builder(
+                  itemCount: chatRooms.length,
+                  itemBuilder: (context, index) {
+                    final chatData = chatRooms[index].data() as Map<String, dynamic>;
+                    final List users = chatData['users'] ?? [];
+                    
+                    // Identify the other person in the chat
+                    final String receiverId = users.firstWhere((id) => id != _currentUserId, orElse: () => "");
+
+                    if (receiverId.isEmpty) return const SizedBox.shrink();
+
+                    return _buildChatTile(chatData, receiverId);
+                  },
+                );
+              },
+            ),
     );
   }
 
-Widget _buildConversationItem(Map<String, dynamic> chat) {
-    return InkWell(
-      onTap: () {
-        // --- NAVIGATION LOGIC ---
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ChatDetailPage(
-              userName: chat['name'],
-              jobTitle: chat['jobTag'],
-              budget: "₱5,000", // You can add this to your data map later
-              avatarColor: chat['avatarColor'],
-              isOnline: true, // We assume they are online for this demo
-            ),
+  Widget _buildChatTile(Map<String, dynamic> chatData, String receiverId) {
+    // We fetch the receiver's name from the users collection for accuracy
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(receiverId).snapshots(),
+      builder: (context, userSnapshot) {
+        String name = "User";
+        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+          final userData = userSnapshot.data!.data() as Map<String, dynamic>;
+          name = userData['fullName'] ?? userData['firstName'] ?? "User";
+        }
+
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: Colors.blue[50],
+            child: Text(name[0].toUpperCase(), style: const TextStyle(color: Color(0xFF2E7EFF), fontWeight: FontWeight.bold)),
           ),
-        );
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Avatar
-            Container(
-              width: 50, height: 50,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [chat['avatarColor'], chat['avatarColor'].withOpacity(0.7)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+          title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Text(
+            chatData['lastMessage'] ?? "No messages yet",
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+          trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ChatDetailPage(
+                  receiverId: receiverId,
+                  receiverName: name,
                 ),
               ),
-              // Green Online Dot (Visual only for list)
-              child: Stack(
-                children: [
-                   // (Avatar is background)
-                   Positioned(
-                     right: 0, bottom: 0,
-                     child: Container(
-                       width: 14, height: 14,
-                       decoration: BoxDecoration(
-                         color: Colors.green, 
-                         shape: BoxShape.circle,
-                         border: Border.all(color: Colors.white, width: 2),
-                       ),
-                     ),
-                   )
-                ],
-              ),
-            ),
-            const SizedBox(width: 16),
-
-            // Content
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(chat['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(chat['time'], style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-                          if (chat['unreadCount'] > 0) ...[
-                            const SizedBox(height: 4),
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(color: Color(0xFF2E7EFF), shape: BoxShape.circle),
-                              child: Text(chat['unreadCount'].toString(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                            )
-                          ]
-                        ],
-                      )
-                    ],
-                  ),
-                  Transform.translate(
-                    offset: const Offset(0, -5),
-                    child: Text(chat['message'], maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey[600], fontSize: 14)),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(Icons.circle, size: 8, color: Colors.green),
-                      const SizedBox(width: 6),
-                      Text(chat['jobTag'], style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                    ],
-                  )
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 }
