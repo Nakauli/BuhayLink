@@ -98,11 +98,9 @@ class _DashboardPageState extends State<DashboardPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text("Welcome back,", style: TextStyle(color: Colors.white70, fontSize: 14)),
-                      // Use Stream from Repository if you want, but direct Firestore for User Profile 
-                      // is often acceptable in simple apps. To be 100% SOLID, move this to repository too.
                       if (uid != null)
                         StreamBuilder<DocumentSnapshot>(
-                          stream: _repository.getUserStatsStream(), // Reusing this stream for profile data
+                          stream: _repository.getUserStatsStream(),
                           builder: (context, snapshot) {
                             if (snapshot.hasData && snapshot.data!.exists) {
                               final data = snapshot.data!.data() as Map<String, dynamic>?;
@@ -117,7 +115,6 @@ class _DashboardPageState extends State<DashboardPage> {
                     ],
                   ),
                   
-                  // Notification Bell
                   GestureDetector(
                     onTap: () {
                        Navigator.push(context, MaterialPageRoute(builder: (context) => NotificationsPage(isEmployerMode: _showMyPosts)));
@@ -132,7 +129,6 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
               const SizedBox(height: 24),
 
-              // Toggle Button
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(16)),
@@ -145,11 +141,8 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
               const SizedBox(height: 24),
 
-
-              // --- DYNAMIC STATS BOXES ---
               if (_showMyPosts)
                  StreamBuilder<QuerySnapshot>(
-                   // SOLID: Using Repository
                    stream: _repository.getMyPostsStream(),
                    builder: (context, snapshot) {
                      int active = 0;
@@ -195,11 +188,9 @@ class _DashboardPageState extends State<DashboardPage> {
                  )
               else
                  StreamBuilder<DocumentSnapshot>(
-                   // SOLID: Using Repository
                    stream: _repository.getUserStatsStream(),
                    builder: (context, snapshot) {
                      final data = snapshot.data?.data() as Map<String, dynamic>?;
-                     
                      final String appliedCount = data?['appliedCount']?.toString() ?? "0";
                      final String savedCount = data?['savedCount']?.toString() ?? "0";
                      
@@ -237,7 +228,6 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
 
-        // REST OF THE DASHBOARD
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: TextField(
@@ -276,7 +266,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            // SOLID: Using Repository
             stream: _showMyPosts 
               ? _repository.getMyPostsStream()
               : _repository.getAllJobsStream(),
@@ -288,8 +277,6 @@ class _DashboardPageState extends State<DashboardPage> {
               }
 
               var docs = snapshot.data!.docs;
-
-              // Filter out my own posts if in "Find Jobs" mode
               final currentUid = FirebaseAuth.instance.currentUser?.uid;
               if (!_showMyPosts && currentUid != null) {
                 docs = docs.where((doc) {
@@ -323,21 +310,21 @@ class _DashboardPageState extends State<DashboardPage> {
                   final String jobId = doc.id; 
 
                   final Map<String, dynamic> jobMap = {
-                    "title": data['title'] ?? "Untitled Job",
+                    "jobId": jobId,
+                    "title": data['title'] ?? "Untitled",
+                    "description": data['description'] ?? "",
                     "tag": data['category'] ?? "General",
                     "price": "₱${data['budgetMin'] ?? 0} - ₱${data['budgetMax'] ?? 0}",
                     "location": data['location'] ?? "Remote",
-                    "user": data['posterName'] ?? "Employer", 
-                    "posterId": data['postedBy'], 
-                    "rating": data['posterRating']?.toString() ?? "New", 
-                    "applicants": "${data['applicants'] ?? 0} applicants",
-                    "duration": "3 days", 
+                    "duration": data['duration'] ?? "3 days",
+                    "applicants": data['applicants'] ?? 0,
                     "isUrgent": data['isUrgent'] ?? false,
-                    "description": data['description'] ?? "No description.",
-                    "status": data['status'], 
+                    "status": data['status'] ?? "open",
+                    "posterId": data['postedBy'] ?? "", 
+                    "rating": data['posterRating']?.toString() ?? "New",
                   };
 
-                  // SOLID: Reusable Widget
+                  // SOLID: Reusable Widget (Using only one call)
                   return JobCard(
                     job: jobMap,
                     showStatus: _showMyPosts, 
@@ -354,7 +341,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- HELPERS ---
   Widget _getBodyContent() {
     switch (_selectedIndex) {
       case 1: return const SearchPage();

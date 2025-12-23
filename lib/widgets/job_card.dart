@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class JobCard extends StatelessWidget {
   final Map<String, dynamic> job;
   final VoidCallback onTap;
-  final bool showStatus; // Optional: to show "Open/Hired" tags for employers
+  final bool showStatus;
 
   const JobCard({
     super.key, 
@@ -14,15 +16,7 @@ class JobCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Safety check for null values
-    final String title = job['title'] ?? "Untitled Job";
-    final bool isUrgent = job['isUrgent'] ?? false;
-    final String description = job['description'] ?? "No description.";
-    final String tag = job['tag'] ?? job['category'] ?? "General";
-    final String price = job['price'] ?? "₱${job['budgetMin'] ?? 0} - ₱${job['budgetMax'] ?? 0}";
-    final String location = job['location'] ?? "Remote";
-    final String duration = job['duration'] ?? "3 days";
-    final String applicants = (job['applicants'] ?? 0).toString().replaceAll(" applicants", "");
+    final String posterId = job['posterId'] ?? "";
     final String status = (job['status'] ?? "Open").toString().toUpperCase();
     final bool isClosed = status == 'CLOSED' || status == 'HIRED';
 
@@ -34,100 +28,92 @@ class JobCard extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 15,
-              offset: const Offset(0, 5)
-            )
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5))
           ],
           border: Border.all(color: Colors.grey.shade100),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ROW 1: Title and Urgent/Status Tag
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, height: 1.3, color: Colors.black87),
-                    maxLines: 1, 
-                    overflow: TextOverflow.ellipsis
-                  ),
-                ),
-                if (showStatus)
-                  Container(
-                    margin: const EdgeInsets.only(left: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isClosed ? Colors.grey[200] : Colors.green[50],
-                      borderRadius: BorderRadius.circular(12)
-                    ),
-                    child: Text(status, style: TextStyle(color: isClosed ? Colors.grey : Colors.green[700], fontSize: 10, fontWeight: FontWeight.bold)),
-                  )
-                else if (isUrgent)
-                  Container(
-                    margin: const EdgeInsets.only(left: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(20)),
-                    child: Row(children: [
-                      Icon(Icons.access_time_filled, size: 14, color: Colors.red[400]),
-                      const SizedBox(width: 6),
-                      Text("Urgent", style: TextStyle(color: Colors.red[400], fontSize: 11, fontWeight: FontWeight.w700))
-                    ]),
-                  ),
-              ],
-            ),
-
+            // Header Row (Title and Urgent Tag)
+            _buildHeader(status, isClosed),
+            const SizedBox(height: 8),
+            Text(job['description'] ?? "", style: TextStyle(color: Colors.grey[600], fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
             const SizedBox(height: 12),
             
-            // ROW 2: Description
-            Text(
-              description,
-              style: TextStyle(color: Colors.grey[600], fontSize: 13, height: 1.4),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // ROW 3: Category Tag
+            // Category Tag
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(12)),
-              child: Text(tag, style: TextStyle(color: Colors.blue[700], fontSize: 12, fontWeight: FontWeight.w600)),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8)),
+              child: Text(job['tag'] ?? "General", style: TextStyle(color: Colors.blue[700], fontSize: 11, fontWeight: FontWeight.bold)),
             ),
-            
-            const SizedBox(height: 20),
-            const Divider(height: 1, color: Colors.black12),
             const SizedBox(height: 16),
-            
-            // ROW 4: Info Grid
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildInfoItem(Icons.payments_outlined, price, isPrimary: true),
-                      const SizedBox(height: 12),
-                      _buildInfoItem(Icons.location_on_outlined, location),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildInfoItem(Icons.schedule_outlined, duration),
-                      const SizedBox(height: 12),
-                      _buildInfoItem(Icons.people_outline_rounded, "$applicants Applicants"),
-                    ],
-                  ),
-                ),
-              ],
+            const Divider(height: 1),
+            const SizedBox(height: 16),
+
+            // Info Items (Price, Location, etc.)
+            _buildInfoGrid(),
+            const SizedBox(height: 16),
+
+            // --- THE FIX: DYNAMIC USER PROFILE SECTION ---
+            StreamBuilder<DocumentSnapshot>(
+              stream: posterId.isNotEmpty 
+                  ? FirebaseFirestore.instance.collection('users').doc(posterId).snapshots()
+                  : null,
+              builder: (context, snapshot) {
+                String name = "Employer";
+                String? profileUrl;
+                
+                if (snapshot.hasData && snapshot.data!.exists) {
+                  final userData = snapshot.data!.data() as Map<String, dynamic>;
+                  name = userData['fullName'] ?? userData['firstName'] ?? userData['username'] ?? "Employer";
+                  profileUrl = userData['profileImageUrl']; // Ensure this field exists in your DB
+                }
+
+                // Fallback for current user's own posts
+                final currentUid = FirebaseAuth.instance.currentUser?.uid;
+                if (posterId == currentUid && name == "Employer") {
+                  name = "Me";
+                }
+
+                return Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.blue[100],
+                      backgroundImage: profileUrl != null ? NetworkImage(profileUrl) : null,
+                      child: profileUrl == null 
+                          ? Text(name[0].toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)) 
+                          : null,
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        Row(
+                          children: [
+                            const Icon(Icons.star, color: Colors.amber, size: 12),
+                            const SizedBox(width: 4),
+                            Text(job['rating'] ?? "New", style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    // Optional Status Badge
+                    if (showStatus)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isClosed ? Colors.grey[100] : Colors.green[50],
+                          borderRadius: BorderRadius.circular(12)
+                        ),
+                        child: Text(status, style: TextStyle(color: isClosed ? Colors.grey : Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
+                  ],
+                );
+              },
             ),
           ],
         ),
@@ -135,24 +121,38 @@ class JobCard extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoItem(IconData icon, String text, {bool isPrimary = false}) {
+  // --- Helper UI Methods ---
+  Widget _buildHeader(String status, bool isClosed) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Icon(icon, size: 18, color: isPrimary ? const Color(0xFF2E7EFF) : Colors.grey[400]),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-            text,
-            style: TextStyle(
-              color: isPrimary ? Colors.black87 : Colors.grey[600],
-              fontSize: 13,
-              fontWeight: isPrimary ? FontWeight.w700 : FontWeight.w500
-            ),
-            overflow: TextOverflow.ellipsis
-          )
-        )
-      ]
+        Expanded(child: Text(job['title'] ?? "", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
+        if (job['isUrgent'] == true)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(8)),
+            child: const Text("URGENT", style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold)),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildInfoGrid() {
+    return Row(
+      children: [
+        Expanded(child: _buildInfoItem(Icons.payments_outlined, job['price'] ?? "", Colors.blue)),
+        Expanded(child: _buildInfoItem(Icons.location_on_outlined, job['location'] ?? "", Colors.grey)),
+      ],
+    );
+  }
+
+  Widget _buildInfoItem(IconData icon, String label, Color iconColor) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: iconColor),
+        const SizedBox(width: 6),
+        Flexible(child: Text(label, style: const TextStyle(fontSize: 12, color: Colors.black87), overflow: TextOverflow.ellipsis)),
+      ],
     );
   }
 }
