@@ -30,9 +30,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  geolocator: ^10.1.0  # For getting GPS coordinates
-  geocoding: ^2.1.1    # For turning coordinates into "City, Country"
-  permission_handler: ^11.0.1 # To handle permission popups nicely
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

@@ -1,6 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart'; 
+// --- FIX: CORRECT IMPORT PATH FOR LOGIN PAGE ---
+import '../../../auth/presentation/pages/login_page.dart'; 
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -10,362 +15,345 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  // --- STATE VARIABLES (Data) ---
-  String _name = "aljuncursiga";
-  String _email = "aljuncursiga@gmail.com";
-  String _aboutMe = "Experienced freelancer with a passion for high-quality work. Specialized in home renovations and quick repairs. Always available for urgent tasks.";
-  String _location = "Metro Manila, Philippines";
-  bool _isLoadingLocation = false;
+  // --- STATE ---
+  File? _profileImage;
+  final ImagePicker _picker = ImagePicker();
+  final User? currentUser = FirebaseAuth.instance.currentUser;
+  
+  int _activeTabIndex = 0; 
+  bool _isUploading = false; 
 
-  List<String> _skills = ["Carpentry", "Plumbing", "Electrical", "Painting"];
+  // --- ACTIONS ---
+  
+  void _showImageSourceActionSheet(BuildContext context) {
+    if (_isUploading) return; 
 
-  // --- LOGIC: GET AUTOMATIC LOCATION ---
-  Future<void> _getCurrentLocation() async {
-    setState(() => _isLoadingLocation = true);
-
-    try {
-      // 1. Check permissions
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          _showSnackBar("Location permissions are denied");
-          return;
-        }
-      }
-
-      // 2. Get GPS Coordinates
-      Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
-
-      // 3. Convert to Address (Reverse Geocoding)
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-          position.latitude, position.longitude);
-
-      if (placemarks.isNotEmpty) {
-        Placemark place = placemarks[0];
-        // Example: "Santo Tomas, Davao"
-        String newLocation = "${place.locality}, ${place.country}";
-        
-        setState(() {
-          _location = newLocation;
-        });
-        _showSnackBar("Location updated to $newLocation");
-      }
-    } catch (e) {
-      _showSnackBar("Error getting location: $e");
-    } finally {
-      setState(() => _isLoadingLocation = false);
-    }
-  }
-
-  // --- LOGIC: EDIT ABOUT ME ---
-  void _editAboutMe() {
-    TextEditingController controller = TextEditingController(text: _aboutMe);
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Edit About Me"),
-        content: TextField(
-          controller: controller,
-          maxLines: 4,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              setState(() => _aboutMe = controller.text);
-              Navigator.pop(context);
-            },
-            child: const Text("Save"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- LOGIC: EDIT SKILLS ---
-  void _editSkills() {
-    TextEditingController skillController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text("Manage Skills"),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // List of current skills with delete button
-                  Wrap(
-                    spacing: 8,
-                    children: _skills.map((skill) => Chip(
-                      label: Text(skill),
-                      deleteIcon: const Icon(Icons.close, size: 18),
-                      onDeleted: () {
-                        setDialogState(() {
-                          setState(() => _skills.remove(skill));
-                        });
-                      },
-                    )).toList(),
-                  ),
-                  const SizedBox(height: 16),
-                  // Input to add new skill
-                  TextField(
-                    controller: skillController,
-                    decoration: InputDecoration(
-                      hintText: "Add a new skill",
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.add_circle, color: Colors.blue),
-                        onPressed: () {
-                          if (skillController.text.isNotEmpty) {
-                            setDialogState(() {
-                              setState(() => _skills.add(skillController.text));
-                            });
-                            skillController.clear();
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Done"),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text("My Profile", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.red),
-            onPressed: () {
-              // Add logout logic here
-            },
-          )
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Column(
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => SafeArea(
+        child: Wrap(
           children: [
-            const SizedBox(height: 20),
-            
-            // --- 1. PROFILE HEADER ---
-            Stack(
-              children: [
-                CircleAvatar(
-                  radius: 50,
-                  backgroundColor: Colors.grey[200],
-                  child: const Icon(Icons.person, size: 60, color: Colors.grey),
-                ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Colors.blue,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
-                  ),
-                ),
-              ],
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Color(0xFF2E7EFF)),
+              title: const Text('Photo Gallery'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _pickAndUploadImage(ImageSource.gallery);
+              },
             ),
-            const SizedBox(height: 12),
-            Text(_name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            Text(_email, style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Icon(Icons.check_circle, size: 16, color: Colors.green),
-                  SizedBox(width: 4),
-                  Text("Verified Member", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
-                ],
-              ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Color(0xFF2E7EFF)),
+              title: const Text('Camera'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _pickAndUploadImage(ImageSource.camera);
+              },
             ),
-
-            const SizedBox(height: 24),
-
-            // --- 2. STATS ROW ---
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildStatItem("2", "Applied", Icons.work_outline),
-                _buildStatItem("0.0", "Rating", Icons.star_border),
-                _buildStatItem("0", "Reviews", Icons.chat_bubble_outline),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // --- 3. TABS (Visual Only) ---
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Expanded(child: _buildTabBtn("Overview", true)),
-                  Expanded(child: _buildTabBtn("Reviews", false)),
-                  Expanded(child: _buildTabBtn("Activity", false)),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // --- 4. ABOUT ME SECTION ---
-            _buildSectionHeader("About Me", onTap: _editAboutMe),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                _aboutMe,
-                style: TextStyle(color: Colors.grey[600], height: 1.5),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // --- 5. SKILLS SECTION ---
-            _buildSectionHeader("Skills", onTap: _editSkills),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Container(
-                width: double.infinity,
-                child: Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: _skills.map((skill) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(skill, style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600)),
-                  )).toList(),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // --- 6. LOCATION SECTION ---
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text("Location", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  // GPS Button
-                  IconButton(
-                    icon: _isLoadingLocation 
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
-                      : const Icon(Icons.my_location, color: Colors.blue),
-                    onPressed: _getCurrentLocation,
-                    tooltip: "Get Current Location",
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  const Icon(Icons.location_on_outlined, color: Colors.grey, size: 20),
-                  const SizedBox(width: 8),
-                  Text(_location, style: TextStyle(color: Colors.grey[600], fontSize: 16)),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 40),
           ],
         ),
       ),
     );
   }
 
-  // --- WIDGET HELPERS ---
+  Future<void> _pickAndUploadImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(source: source);
+      
+      if (pickedFile == null) return;
 
-  Widget _buildSectionHeader(String title, {required VoidCallback onTap}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      setState(() {
+        _profileImage = File(pickedFile.path);
+        _isUploading = true;
+      });
+
+      // A. Upload to Firebase Storage
+      final String fileName = '${currentUser!.uid}_profile.jpg';
+      final Reference storageRef = FirebaseStorage.instance.ref().child('profile_images/$fileName');
+      
+      await storageRef.putFile(File(pickedFile.path));
+      final String downloadUrl = await storageRef.getDownloadURL();
+
+      // B. Save URL to Firestore
+      await FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).update({
+        'photoUrl': downloadUrl,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile photo updated!")));
+      }
+
+    } catch (e) {
+      debugPrint("Error uploading image: $e");
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload failed: $e")));
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  Future<void> _signOut() async {
+    await FirebaseAuth.instance.signOut();
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+        (Route<dynamic> route) => false,
+      );
+    }
+  }
+
+  // --- UI BUILDER ---
+  @override
+  Widget build(BuildContext context) {
+    if (currentUser == null) {
+      return const Center(child: Text("Please login to view profile"));
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: const Text("My Profile", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        actions: [
           IconButton(
-            icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
-            onPressed: onTap,
-          ),
+            icon: const Icon(Icons.logout, color: Colors.red),
+            onPressed: _signOut,
+          )
         ],
+      ),
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+          final data = snapshot.data!.data() as Map<String, dynamic>?;
+          String name = data?['fullName'] ?? data?['firstName'] ?? currentUser?.email?.split('@')[0] ?? "User";
+          String? photoUrl = data?['photoUrl']; 
+          String role = "Member";
+
+          return SingleChildScrollView(
+            child: Column(
+              children: [
+                const SizedBox(height: 20),
+                
+                // 1. PROFILE IMAGE PICKER
+                Center(
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.grey[200],
+                          border: Border.all(color: Colors.white, width: 4),
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))
+                          ],
+                          image: _getImageProvider(photoUrl), 
+                        ),
+                        child: (_profileImage == null && photoUrl == null)
+                            ? Icon(Icons.person, size: 60, color: Colors.grey[400])
+                            : null,
+                      ),
+                      
+                      if (_isUploading)
+                        const Positioned.fill(
+                          child: CircularProgressIndicator(color: Color(0xFF2E7EFF)),
+                        ),
+
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: () => _showImageSourceActionSheet(context), 
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF2E7EFF),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                          ),
+                        ),
+                      )
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // 2. USER INFO
+                Column(
+                  children: [
+                    Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text(currentUser?.email ?? "", style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(20)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.check_circle, size: 14, color: Colors.green),
+                          const SizedBox(width: 4),
+                          Text("Verified $role", style: TextStyle(color: Colors.green[700], fontSize: 12, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    )
+                  ],
+                ),
+
+                const SizedBox(height: 24),
+
+                // 3. STATS ROW
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildStatItem("Applied", data?['appliedCount']?.toString() ?? "0", Icons.work_outline),
+                      _buildStatItem("Rating", data?['rating']?.toString() ?? "0.0", Icons.star_border),
+                      _buildStatItem("Reviews", "0", Icons.rate_review_outlined),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+
+                // 4. CUSTOM TAB BAR
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      _buildTab("Overview", 0),
+                      _buildTab("Reviews", 1),
+                      _buildTab("Activity", 2),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // 5. TAB CONTENT AREA
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: _buildTabContent(),
+                ),
+                
+                const SizedBox(height: 40),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildStatItem(String value, String label, IconData icon) {
+  // --- HELPERS ---
+  
+  DecorationImage? _getImageProvider(String? cloudUrl) {
+    if (_profileImage != null) {
+      return DecorationImage(image: FileImage(_profileImage!), fit: BoxFit.cover);
+    }
+    if (cloudUrl != null && cloudUrl.isNotEmpty) {
+      return DecorationImage(image: NetworkImage(cloudUrl), fit: BoxFit.cover);
+    }
+    return null;
+  }
+
+  Widget _buildStatItem(String label, String value, IconData icon) {
     return Column(
       children: [
-        Icon(icon, color: Colors.blue, size: 28),
+        Icon(icon, color: const Color(0xFF2E7EFF), size: 28),
         const SizedBox(height: 8),
         Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        const SizedBox(height: 4),
+        Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
       ],
     );
   }
 
-  Widget _buildTabBtn(String label, bool isActive) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      decoration: BoxDecoration(
-        color: isActive ? Colors.blue : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Center(
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isActive ? Colors.white : Colors.grey,
-            fontWeight: FontWeight.bold,
+  Widget _buildTab(String text, int index) {
+    bool isActive = _activeTabIndex == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _activeTabIndex = index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isActive ? const Color(0xFF2E7EFF) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Center(
+            child: Text(
+              text, 
+              style: TextStyle(
+                color: isActive ? Colors.white : Colors.grey[600],
+                fontWeight: FontWeight.bold,
+                fontSize: 13
+              )
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildTabContent() {
+    switch (_activeTabIndex) {
+      case 0:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("About Me", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            Text(
+              "Experienced freelancer with a passion for high-quality work. Specialized in home renovations and quick repairs. Always available for urgent tasks.",
+              style: TextStyle(color: Colors.grey[600], height: 1.5),
+            ),
+            const SizedBox(height: 20),
+            const Text("Skills", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildSkillChip("Carpentry"),
+                _buildSkillChip("Plumbing"),
+                _buildSkillChip("Electrical"),
+                _buildSkillChip("Painting"),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Text("Location", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            Row(children: [
+              Icon(Icons.location_on_outlined, size: 18, color: Colors.grey[500]),
+              const SizedBox(width: 8),
+              Text("Metro Manila, Philippines", style: TextStyle(color: Colors.grey[600])),
+            ]),
+          ],
+        );
+      case 1: return Center(child: Text("No reviews yet.", style: TextStyle(color: Colors.grey[400])));
+      case 2: return Center(child: Text("No recent activity.", style: TextStyle(color: Colors.grey[400])));
+      default: return const SizedBox();
+    }
+  }
+
+  Widget _buildSkillChip(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(color: const Color(0xFF2E7EFF).withOpacity(0.05), borderRadius: BorderRadius.circular(20)),
+      child: Text(label, style: const TextStyle(color: Color(0xFF2E7EFF), fontWeight: FontWeight.bold, fontSize: 12)),
     );
   }
 }
