@@ -14,9 +14,9 @@ class JobRepository {
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
     FirebaseJobService? service,
-  })  : _firestore = firestore ?? FirebaseFirestore.instance,
-        _auth = auth ?? FirebaseAuth.instance,
-        _service = service ?? FirebaseJobService();
+  }) : _firestore = firestore ?? FirebaseFirestore.instance,
+       _auth = auth ?? FirebaseAuth.instance,
+       _service = service ?? FirebaseJobService();
 
   // --- DASHBOARD & GENERAL ---
   Stream<List<JobModel>> getJobs() => _service.getJobs();
@@ -45,19 +45,31 @@ class JobRepository {
   }
 
   // 3. Hire Applicant (Atomic Transaction)
-  Future<void> hireApplicant(String userId, String jobId, String? jobTitle) async {
+  Future<void> hireApplicant(
+    String userId,
+    String jobId,
+    String? jobTitle,
+  ) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) return;
 
     String employerName = "Employer";
-    DocumentSnapshot userDoc = await _firestore.collection('users').doc(currentUser.uid).get();
+    DocumentSnapshot userDoc = await _firestore
+        .collection('users')
+        .doc(currentUser.uid)
+        .get();
     if (userDoc.exists) {
       final data = userDoc.data() as Map<String, dynamic>;
-      employerName = data['fullName'] ?? data['firstName'] ?? data['username'] ?? currentUser.email?.split('@')[0] ?? "Employer";
+      employerName =
+          data['fullName'] ??
+          data['firstName'] ??
+          data['username'] ??
+          currentUser.email?.split('@')[0] ??
+          "Employer";
     }
 
     WriteBatch batch = _firestore.batch();
-    
+
     // Increment Hired Count
     batch.update(_firestore.collection('users').doc(userId), {
       'hiredCompleted': FieldValue.increment(1),
@@ -68,10 +80,11 @@ class JobRepository {
     batch.set(notifRef, {
       'recipientId': userId,
       'title': 'Congratulations! You are Hired',
-      'message': "You have been hired by $employerName for the position: ${jobTitle ?? 'Job'}.",
+      'message':
+          "You have been hired by $employerName for the position: ${jobTitle ?? 'Job'}.",
       'read': false,
       'timestamp': FieldValue.serverTimestamp(),
-      'type': 'hired', 
+      'type': 'hired',
       'jobId': jobId,
     });
 
@@ -79,14 +92,19 @@ class JobRepository {
   }
 
   // 4. Reject Applicant
-  Future<void> rejectApplicant(String userId, String jobId, String? jobTitle) async {
+  Future<void> rejectApplicant(
+    String userId,
+    String jobId,
+    String? jobTitle,
+  ) async {
     await _firestore.collection('notifications').add({
       'recipientId': userId,
       'title': 'Application Update',
-      'message': "Your application for ${jobTitle ?? 'the position'} was not selected.",
+      'message':
+          "Your application for ${jobTitle ?? 'the position'} was not selected.",
       'read': false,
       'timestamp': FieldValue.serverTimestamp(),
-      'type': 'rejected', 
+      'type': 'rejected',
       'jobId': jobId,
     });
   }
@@ -109,11 +127,17 @@ class JobRepository {
     if (uid == null) throw Exception("User not logged in");
 
     WriteBatch batch = _firestore.batch();
-    DocumentReference appDoc = _firestore.collection('users').doc(uid).collection('applications').doc(docId);
+    DocumentReference appDoc = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('applications')
+        .doc(docId);
     DocumentReference userDoc = _firestore.collection('users').doc(uid);
 
     batch.delete(appDoc);
-    batch.set(userDoc, {'appliedCount': FieldValue.increment(-1)}, SetOptions(merge: true));
+    batch.set(userDoc, {
+      'appliedCount': FieldValue.increment(-1),
+    }, SetOptions(merge: true));
     await batch.commit();
   }
 
@@ -134,7 +158,11 @@ class JobRepository {
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
     if (userDoc.exists) {
       final data = userDoc.data();
-      posterName = data?['fullName'] ?? data?['firstName'] ?? data?['username'] ?? user.email!.split('@')[0];
+      posterName =
+          data?['fullName'] ??
+          data?['firstName'] ??
+          data?['username'] ??
+          user.email!.split('@')[0];
     }
 
     DocumentReference jobRef = await _firestore.collection('jobs').add({
@@ -168,40 +196,65 @@ class JobRepository {
 
   // --- HELPERS (Save, Apply, Sync) ---
 
-  Future<void> toggleSaveJob(String jobId, Map<String, dynamic> jobData, bool isCurrentlySaved) async {
+  Future<void> toggleSaveJob(
+    String jobId,
+    Map<String, dynamic> jobData,
+    bool isCurrentlySaved,
+  ) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception("User not logged in");
 
-    final savedJobRef = _firestore.collection('users').doc(user.uid).collection('saved').doc(jobId);
+    final savedJobRef = _firestore
+        .collection('users')
+        .doc(user.uid)
+        .collection('saved')
+        .doc(jobId);
     final userRef = _firestore.collection('users').doc(user.uid);
 
     if (isCurrentlySaved) {
       await savedJobRef.delete();
-      await userRef.set({'savedCount': FieldValue.increment(-1)}, SetOptions(merge: true));
+      await userRef.set({
+        'savedCount': FieldValue.increment(-1),
+      }, SetOptions(merge: true));
     } else {
       await savedJobRef.set({
         'jobId': jobId,
         'title': jobData['title'],
-        'price': jobData['price'] ?? "₱${jobData['budgetMin']} - ₱${jobData['budgetMax']}",
+        'price':
+            jobData['price'] ??
+            "₱${jobData['budgetMin']} - ₱${jobData['budgetMax']}",
         'category': jobData['tag'] ?? "General",
         'location': jobData['location'],
         'savedAt': FieldValue.serverTimestamp(),
       });
-      await userRef.set({'savedCount': FieldValue.increment(1)}, SetOptions(merge: true));
+      await userRef.set({
+        'savedCount': FieldValue.increment(1),
+      }, SetOptions(merge: true));
     }
   }
 
   Future<bool> isJobSaved(String jobId) async {
     final user = _auth.currentUser;
     if (user == null) return false;
-    final doc = await _firestore.collection('users').doc(user.uid).collection('saved').doc(jobId).get();
+    final doc = await _firestore
+        .collection('users')
+        .doc(user.uid)
+        .collection('saved')
+        .doc(jobId)
+        .get();
     return doc.exists;
   }
 
   Future<bool> hasApplied(String jobId) async {
     final user = _auth.currentUser;
     if (user == null) return false;
-    final query = await _firestore.collection('users').doc(user.uid).collection('applications').where('jobId', isEqualTo: jobId).limit(1).get();
+    final query = await _firestore
+        .collection('users')
+        .doc(user.uid)
+        .collection('applications')
+        .where('jobId', isEqualTo: jobId)
+        .limit(1)
+        .get();
     return query.docs.isNotEmpty;
   }
 
@@ -223,24 +276,57 @@ class JobRepository {
       'type': 'application',
     });
 
-    await _firestore.collection('users').doc(user.uid).collection('applications').add({
-      'jobId': jobId,
-      'title': jobData['title'],
-      'price': jobData['price'] ?? "0",
-      'timestamp': FieldValue.serverTimestamp(),
-      'status': 'Applied',
-      'employerId': employerId,
-    });
+    await _firestore
+        .collection('users')
+        .doc(user.uid)
+        .collection('applications')
+        .add({
+          'jobId': jobId,
+          'title': jobData['title'],
+          'price': jobData['price'] ?? "0",
+          'timestamp': FieldValue.serverTimestamp(),
+          'status': 'Applied',
+          'employerId': employerId,
+        });
 
-    await _firestore.collection('users').doc(user.uid).update({'appliedCount': FieldValue.increment(1)});
-    await _firestore.collection('jobs').doc(jobId).update({'applicants': FieldValue.increment(1)});
+    await _firestore.collection('users').doc(user.uid).update({
+      'appliedCount': FieldValue.increment(1),
+    });
+    await _firestore.collection('jobs').doc(jobId).update({
+      'applicants': FieldValue.increment(1),
+    });
   }
 
   Future<void> syncApplicationCount() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;
-    final query = await _firestore.collection('users').doc(uid).collection('applications').count().get();
+    final query = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('applications')
+        .count()
+        .get();
     final int actualCount = query.count ?? 0;
-    await _firestore.collection('users').doc(uid).set({'appliedCount': actualCount}, SetOptions(merge: true));
+    await _firestore.collection('users').doc(uid).set({
+      'appliedCount': actualCount,
+    }, SetOptions(merge: true));
+  }
+
+  // DELETE A JOB
+  Future<void> deleteJob(String jobId) async {
+    try {
+      await _firestore.collection('jobs').doc(jobId).delete();
+    } catch (e) {
+      throw Exception("Failed to delete job: $e");
+    }
+  }
+
+  // EDIT A JOB
+  Future<void> updateJob(String jobId, Map<String, dynamic> newValues) async {
+    try {
+      await _firestore.collection('jobs').doc(jobId).update(newValues);
+    } catch (e) {
+      throw Exception("Failed to update job: $e");
+    }
   }
 }

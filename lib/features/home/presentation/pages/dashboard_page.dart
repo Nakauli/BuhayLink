@@ -7,17 +7,16 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 // --- IMPORTS ---
 import 'add_job_page.dart';
-import 'profile_page.dart'; 
+import 'profile_page.dart';
 import 'messages_page.dart';
-import 'search_page.dart'; 
+import 'search_page.dart';
 import 'notifications_page.dart';
 import 'job_details_page.dart';
 import 'applied_jobs_page.dart';
-import 'hired_jobs_page.dart'; 
-import 'saved_jobs_page.dart'; 
+import 'hired_jobs_page.dart';
+import 'saved_jobs_page.dart';
 import 'my_posted_jobs_page.dart';
-import 'public_profile_page.dart'; 
-
+import 'public_profile_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -31,17 +30,15 @@ class _DashboardPageState extends State<DashboardPage> {
   final _repository = DashboardRepository();
 
   int _selectedIndex = 0;
-  bool _showMyPosts = false; 
-  String _selectedFilter = "All"; 
-  String _searchQuery = "";       
+  bool _showMyPosts = false;
+  String _selectedFilter = "All";
+  String _searchQuery = "";
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      body: _selectedIndex == 0 
-          ? _buildHomeWithHeader() 
-          : _getBodyContent(),
+      body: _selectedIndex == 0 ? _buildHomeWithHeader() : _getBodyContent(),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) => setState(() => _selectedIndex = index),
@@ -51,17 +48,26 @@ class _DashboardPageState extends State<DashboardPage> {
         showUnselectedLabels: true,
         items: [
           const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-          const BottomNavigationBarItem(icon: Icon(Icons.search), label: "Search"),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.search),
+            label: "Search",
+          ),
           BottomNavigationBarItem(
             icon: Icon(
-              _showMyPosts ? Icons.add_circle : Icons.assignment, 
-              size: 40, 
-              color: const Color(0xFF2E7EFF)
-            ), 
-            label: _showMyPosts ? "Post" : "Applied"
+              _showMyPosts ? Icons.add_circle : Icons.assignment,
+              size: 40,
+              color: const Color(0xFF2E7EFF),
+            ),
+            label: _showMyPosts ? "Post" : "Applied",
           ),
-          const BottomNavigationBarItem(icon: Icon(Icons.message), label: "Messages"),
-          const BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.message),
+            label: "Messages",
+          ),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: "Profile",
+          ),
         ],
       ),
     );
@@ -70,13 +76,18 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildHomeWithHeader() {
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid;
-    final emailName = user?.email?.split('@')[0] ?? "Guest"; 
+    final emailName = user?.email?.split('@')[0] ?? "Guest";
 
     return Column(
       children: [
         // A. BLUE HEADER
         Container(
-          padding: const EdgeInsets.only(top: 50, left: 24, right: 24, bottom: 24),
+          padding: const EdgeInsets.only(
+            top: 50,
+            left: 24,
+            right: 24,
+            bottom: 24,
+          ),
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -97,133 +108,241 @@ class _DashboardPageState extends State<DashboardPage> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text("Welcome back,", style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      const Text(
+                        "Welcome back,",
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
                       if (uid != null)
                         StreamBuilder<DocumentSnapshot>(
                           stream: _repository.getUserStatsStream(),
                           builder: (context, snapshot) {
                             if (snapshot.hasData && snapshot.data!.exists) {
-                              final data = snapshot.data!.data() as Map<String, dynamic>?;
-                              final String realName = data?['fullName'] ?? data?['firstName'] ?? data?['username'] ?? emailName;
-                              return Text(realName, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold));
+                              final data =
+                                  snapshot.data!.data()
+                                      as Map<String, dynamic>?;
+                              final String realName =
+                                  data?['fullName'] ??
+                                  data?['firstName'] ??
+                                  data?['username'] ??
+                                  emailName;
+                              return Text(
+                                realName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              );
                             }
-                            return Text(emailName, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold));
+                            return Text(
+                              emailName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            );
                           },
                         )
                       else
-                         const Text("Guest", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                        const Text(
+                          "Guest",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                     ],
                   ),
-                  
+
                   GestureDetector(
                     onTap: () {
-                       Navigator.push(context, MaterialPageRoute(builder: (context) => NotificationsPage(isEmployerMode: _showMyPosts)));
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              NotificationsPage(isEmployerMode: _showMyPosts),
+                        ),
+                      );
                     },
                     child: Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
-                      child: const Icon(Icons.notifications, color: Colors.white),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.notifications,
+                        color: Colors.white,
+                      ),
                     ),
-                  )
+                  ),
                 ],
               ),
               const SizedBox(height: 24),
 
               Container(
                 padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(16)),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: Row(
                   children: [
-                    Expanded(child: _buildToggleButton("Find Jobs", !_showMyPosts)),
-                    Expanded(child: _buildToggleButton("My Posts", _showMyPosts)),
+                    Expanded(
+                      child: _buildToggleButton("Find Jobs", !_showMyPosts),
+                    ),
+                    Expanded(
+                      child: _buildToggleButton("My Posts", _showMyPosts),
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 24),
 
               if (_showMyPosts)
-                 StreamBuilder<QuerySnapshot>(
-                   stream: _repository.getMyPostsStream(),
-                   builder: (context, snapshot) {
-                     int active = 0;
-                     int hired = 0;
-                     int total = 0;
+                StreamBuilder<QuerySnapshot>(
+                  stream: _repository.getMyPostsStream(),
+                  builder: (context, snapshot) {
+                    int active = 0;
+                    int hired = 0;
+                    int total = 0;
 
-                     if (snapshot.hasData) {
-                       total = snapshot.data!.docs.length;
-                       active = snapshot.data!.docs.where((doc) => doc['status'] == 'open').length;
-                       hired = snapshot.data!.docs.where((doc) => doc['status'] == 'hired' || doc['status'] == 'closed').length;
-                     }
+                    if (snapshot.hasData) {
+                      total = snapshot.data!.docs.length;
+                      active = snapshot.data!.docs
+                          .where((doc) => doc['status'] == 'open')
+                          .length;
+                      hired = snapshot.data!.docs
+                          .where(
+                            (doc) =>
+                                doc['status'] == 'hired' ||
+                                doc['status'] == 'closed',
+                          )
+                          .length;
+                    }
 
-                     return Row(
-                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                       children: [
-                         StatCard(
-                           value: active.toString(), 
-                           label: "Active", 
-                           icon: Icons.work_outline,
-                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MyPostedJobsPage(title: "Active Jobs", statusFilter: ['open'])))
-                         ),
-                         StatCard(
-                           value: hired.toString(), 
-                           label: "Hired", 
-                           icon: Icons.handshake_rounded,
-                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MyPostedJobsPage(title: "Hired History", statusFilter: ['hired', 'closed'])))
-                         ),
-                         StatCard(
-                           value: "4.5", 
-                           label: "Ratings", 
-                           icon: Icons.star_rounded,
-                           onTap: uid != null ? () => Navigator.push(context, MaterialPageRoute(builder: (context) => PublicProfilePage(userId: uid, userName: "Me"))) : null
-                         ), 
-                         StatCard(
-                           value: total.toString(), 
-                           label: "Total Posts", 
-                           icon: Icons.list_alt_rounded,
-                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MyPostedJobsPage(title: "All Posts", statusFilter: [])))
-                         ),
-                       ],
-                     );
-                   }
-                 )
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        StatCard(
+                          value: active.toString(),
+                          label: "Active",
+                          icon: Icons.work_outline,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => MyPostedJobsPage(
+                                title: "Active Jobs",
+                                statusFilter: ['open'],
+                              ),
+                            ),
+                          ),
+                        ),
+                        StatCard(
+                          value: hired.toString(),
+                          label: "Hired",
+                          icon: Icons.handshake_rounded,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => MyPostedJobsPage(
+                                title: "Hired History",
+                                statusFilter: ['hired', 'closed'],
+                              ),
+                            ),
+                          ),
+                        ),
+                        StatCard(
+                          value: "4.5",
+                          label: "Ratings",
+                          icon: Icons.star_rounded,
+                          onTap: uid != null
+                              ? () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => PublicProfilePage(
+                                      userId: uid,
+                                      userName: "Me",
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
+                        StatCard(
+                          value: total.toString(),
+                          label: "Total Posts",
+                          icon: Icons.list_alt_rounded,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => MyPostedJobsPage(
+                                title: "All Posts",
+                                statusFilter: [],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                )
               else
-                 StreamBuilder<DocumentSnapshot>(
-                   stream: _repository.getUserStatsStream(),
-                   builder: (context, snapshot) {
-                     final data = snapshot.data?.data() as Map<String, dynamic>?;
-                     final String appliedCount = data?['appliedCount']?.toString() ?? "0";
-                     final String savedCount = data?['savedCount']?.toString() ?? "0";
-                     
-                     return Row(
-                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                       children: [
-                         StatCard(
-                           value: appliedCount, 
-                           label: "Applied", 
-                           icon: Icons.assignment_turned_in_rounded, 
-                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AppliedJobsPage()))
-                         ),
-                         StatCard(
-                           value: "0", 
-                           label: "Hired", 
-                           icon: Icons.check_circle_outline,
-                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const HiredJobsPage()))
-                         ),
-                         StatCard(
-                           value: data?['rating']?.toString() ?? "0.0", 
-                           label: "Ratings", 
-                           icon: Icons.star_rounded
-                         ),
-                         StatCard(
-                           value: savedCount, 
-                           label: "Saved", 
-                           icon: Icons.bookmark_rounded,
-                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SavedJobsPage()))
-                         ),
-                       ],
-                     );
-                   }
-                 ),
+                StreamBuilder<DocumentSnapshot>(
+                  stream: _repository.getUserStatsStream(),
+                  builder: (context, snapshot) {
+                    final data = snapshot.data?.data() as Map<String, dynamic>?;
+                    final String appliedCount =
+                        data?['appliedCount']?.toString() ?? "0";
+                    final String savedCount =
+                        data?['savedCount']?.toString() ?? "0";
+
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        StatCard(
+                          value: appliedCount,
+                          label: "Applied",
+                          icon: Icons.assignment_turned_in_rounded,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const AppliedJobsPage(),
+                            ),
+                          ),
+                        ),
+                        StatCard(
+                          value: "0",
+                          label: "Hired",
+                          icon: Icons.check_circle_outline,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const HiredJobsPage(),
+                            ),
+                          ),
+                        ),
+                        StatCard(
+                          value: data?['rating']?.toString() ?? "0.0",
+                          label: "Ratings",
+                          icon: Icons.star_rounded,
+                        ),
+                        StatCard(
+                          value: savedCount,
+                          label: "Saved",
+                          icon: Icons.bookmark_rounded,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SavedJobsPage(),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
             ],
           ),
         ),
@@ -231,15 +350,24 @@ class _DashboardPageState extends State<DashboardPage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: TextField(
-            onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
+            onChanged: (value) =>
+                setState(() => _searchQuery = value.toLowerCase()),
             decoration: InputDecoration(
-              hintText: _showMyPosts ? "Search my posts..." : "Search for jobs...",
+              hintText: _showMyPosts
+                  ? "Search my posts..."
+                  : "Search for jobs...",
               prefixIcon: const Icon(Icons.search, color: Colors.grey),
               filled: true,
               fillColor: Colors.white,
               contentPadding: const EdgeInsets.symmetric(vertical: 14),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade200)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade200)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: Colors.grey.shade200),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: Colors.grey.shade200),
+              ),
             ),
           ),
         ),
@@ -266,14 +394,22 @@ class _DashboardPageState extends State<DashboardPage> {
 
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: _showMyPosts 
-              ? _repository.getMyPostsStream()
-              : _repository.getAllJobsStream(),
+            stream: _showMyPosts
+                ? _repository.getMyPostsStream()
+                : _repository.getAllJobsStream(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-              
+              if (snapshot.connectionState == ConnectionState.waiting)
+                return const Center(child: CircularProgressIndicator());
+
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return Center(child: Text(_showMyPosts ? "You haven't posted any jobs." : "No jobs found.", style: TextStyle(color: Colors.grey[500])));
+                return Center(
+                  child: Text(
+                    _showMyPosts
+                        ? "You haven't posted any jobs."
+                        : "No jobs found.",
+                    style: TextStyle(color: Colors.grey[500]),
+                  ),
+                );
               }
 
               var docs = snapshot.data!.docs;
@@ -288,48 +424,96 @@ class _DashboardPageState extends State<DashboardPage> {
               if (_searchQuery.isNotEmpty) {
                 docs = docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
-                  return (data['title'] ?? "").toString().toLowerCase().contains(_searchQuery) || (data['category'] ?? "").toString().toLowerCase().contains(_searchQuery);
+                  return (data['title'] ?? "")
+                          .toString()
+                          .toLowerCase()
+                          .contains(_searchQuery) ||
+                      (data['category'] ?? "")
+                          .toString()
+                          .toLowerCase()
+                          .contains(_searchQuery);
                 }).toList();
               }
-              
-              if (!_showMyPosts) { 
-                if (_selectedFilter == "Urgent") docs = docs.where((doc) => (doc.data() as Map<String, dynamic>)['isUrgent'] == true).toList();
-                else if (_selectedFilter == "\$ High Pay") docs = docs.where((doc) => ((doc.data() as Map<String, dynamic>)['budgetMax'] ?? 0) >= 20000).toList();
-                else if (_selectedFilter == "Nearby") docs = docs.where((doc) => (doc.data() as Map<String, dynamic>)['location'].toString().toLowerCase().contains("santo tomas")).toList();
+
+              if (!_showMyPosts) {
+                if (_selectedFilter == "Urgent")
+                  docs = docs
+                      .where(
+                        (doc) =>
+                            (doc.data() as Map<String, dynamic>)['isUrgent'] ==
+                            true,
+                      )
+                      .toList();
+                else if (_selectedFilter == "\$ High Pay")
+                  docs = docs
+                      .where(
+                        (doc) =>
+                            ((doc.data()
+                                    as Map<String, dynamic>)['budgetMax'] ??
+                                0) >=
+                            20000,
+                      )
+                      .toList();
+                else if (_selectedFilter == "Nearby")
+                  docs = docs
+                      .where(
+                        (doc) =>
+                            (doc.data() as Map<String, dynamic>)['location']
+                                .toString()
+                                .toLowerCase()
+                                .contains("santo tomas"),
+                      )
+                      .toList();
               }
 
-              if (docs.isEmpty) return Center(child: Text("No matches found.", style: TextStyle(color: Colors.grey[500])));
+              if (docs.isEmpty)
+                return Center(
+                  child: Text(
+                    "No matches found.",
+                    style: TextStyle(color: Colors.grey[500]),
+                  ),
+                );
 
               return ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 10,
+                ),
                 itemCount: docs.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 16),
                 itemBuilder: (context, index) {
                   final doc = docs[index];
                   final data = doc.data() as Map<String, dynamic>;
-                  final String jobId = doc.id; 
+                  final String jobId = doc.id;
 
                   final Map<String, dynamic> jobMap = {
                     "jobId": jobId,
                     "title": data['title'] ?? "Untitled",
                     "description": data['description'] ?? "",
                     "tag": data['category'] ?? "General",
-                    "price": "₱${data['budgetMin'] ?? 0} - ₱${data['budgetMax'] ?? 0}",
+                    "price":
+                        "₱${data['budgetMin'] ?? 0} - ₱${data['budgetMax'] ?? 0}",
                     "location": data['location'] ?? "Remote",
                     "duration": data['duration'] ?? "3 days",
                     "applicants": data['applicants'] ?? 0,
                     "isUrgent": data['isUrgent'] ?? false,
                     "status": data['status'] ?? "open",
-                    "posterId": data['postedBy'] ?? "", 
+                    "posterId": data['postedBy'] ?? "",
                     "rating": data['posterRating']?.toString() ?? "New",
                   };
 
                   // SOLID: Reusable Widget (Using only one call)
                   return JobCard(
                     job: jobMap,
-                    showStatus: _showMyPosts, 
+                    showStatus: _showMyPosts,
                     onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => JobDetailsPage(job: jobMap, jobId: jobId)));
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              JobDetailsPage(job: jobMap, jobId: jobId),
+                        ),
+                      );
                     },
                   );
                 },
@@ -343,23 +527,43 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _getBodyContent() {
     switch (_selectedIndex) {
-      case 1: return const SearchPage();
-      case 2: return _showMyPosts 
-          ? const AddJobPage(showBackButton: false)
-          : const AppliedJobsPage(showBackButton: false);
-      case 3: return const MessagesPage();
-      case 4: return const ProfilePage();
-      default: return const Center(child: Text("Page Not Found"));
+      case 1:
+        return const SearchPage();
+      case 2:
+        return _showMyPosts
+            ? const AddJobPage(showBackButton: false)
+            : const AppliedJobsPage(showBackButton: false);
+      case 3:
+        return const MessagesPage();
+      case 4:
+        return const ProfilePage();
+      default:
+        return const Center(child: Text("Page Not Found"));
     }
   }
 
   Widget _buildToggleButton(String text, bool isActive) {
     return GestureDetector(
-      onTap: () => setState(() { _showMyPosts = text == "My Posts"; _selectedFilter = "All"; _searchQuery = ""; }),
+      onTap: () => setState(() {
+        _showMyPosts = text == "My Posts";
+        _selectedFilter = "All";
+        _searchQuery = "";
+      }),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(color: isActive ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(12)),
-        child: Center(child: Text(text, style: TextStyle(color: isActive ? const Color(0xFF2E7EFF) : Colors.white, fontWeight: FontWeight.bold))),
+        decoration: BoxDecoration(
+          color: isActive ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: isActive ? const Color(0xFF2E7EFF) : Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -367,12 +571,35 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildFilterChip(String label, {IconData? icon}) {
     bool isActive = _selectedFilter == label;
     return GestureDetector(
-      onTap: () => setState(() => _selectedFilter = label), 
+      onTap: () => setState(() => _selectedFilter = label),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(color: isActive ? const Color(0xFF2E7EFF) : Colors.white, borderRadius: BorderRadius.circular(20), border: isActive ? null : Border.all(color: Colors.grey.shade300)),
-        child: Row(children: [if (icon != null) ...[Icon(icon, size: 14, color: isActive ? Colors.white : Colors.grey[600]), const SizedBox(width: 6)], Text(label, style: TextStyle(color: isActive ? Colors.white : Colors.grey[800], fontWeight: FontWeight.bold, fontSize: 13))]),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF2E7EFF) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: isActive ? null : Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 14,
+                color: isActive ? Colors.white : Colors.grey[600],
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? Colors.white : Colors.grey[800],
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
