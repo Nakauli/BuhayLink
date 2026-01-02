@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+// Ensure this path matches your project structure
 import '../../../jobs/data/repositories/job_repository.dart';
 import 'public_profile_page.dart';
 import 'job_applicants_page.dart';
@@ -80,9 +81,9 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
   // --- DELETE FUNCTION ---
   void _confirmDelete() {
     showDialog(
-      context: context,
+      context: context, // Uses Page Context
       builder: (dialogContext) => AlertDialog(
-        // <--- RENAME THIS
+        // Uses NEW Dialog Context
         title: const Text("Delete Job?"),
         content: const Text(
           "Are you sure you want to remove this job post? This cannot be undone.",
@@ -94,12 +95,16 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
           ),
           TextButton(
             onPressed: () async {
-              Navigator.pop(dialogContext); // Close the dialog
+              // 1. Close Dialog
+              Navigator.pop(dialogContext);
 
+              // 2. Perform Delete
               await _jobRepository.deleteJob(widget.jobId);
 
+              // 3. Check if Page is still valid
               if (mounted) {
-                Navigator.pop(context); // Close the Page using main context
+                // 4. Use Page Context to go back
+                Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text("Job deleted successfully")),
                 );
@@ -112,10 +117,17 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     );
   }
 
-  // --- EDIT FUNCTION ---
+  // --- EDIT FUNCTION (Fixed Context + Added Category/Location) ---
   void _showEditDialog() {
+    // 1. Setup Controllers
     final titleCtrl = TextEditingController(text: widget.job['title']);
+    // Try 'tag' first, then 'category' (handles different database naming)
+    final categoryCtrl = TextEditingController(
+      text: widget.job['tag'] ?? widget.job['category'] ?? "",
+    );
+    final locationCtrl = TextEditingController(text: widget.job['location']);
     final descCtrl = TextEditingController(text: widget.job['description']);
+
     final minBudgetCtrl = TextEditingController(
       text: (widget.job['budgetMin'] ?? 0).toString(),
     );
@@ -124,9 +136,9 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     );
 
     showDialog(
-      context: context, // Uses the Page Context
+      context: context, // 1. Pass the PAGE context here
+      // 2. CRITICAL FIX: Name this 'dialogContext' to avoid confusion!
       builder: (dialogContext) => AlertDialog(
-        // <--- RENAME THIS to dialogContext
         title: const Text("Edit Job Details"),
         content: SingleChildScrollView(
           child: Column(
@@ -134,15 +146,41 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
             children: [
               TextField(
                 controller: titleCtrl,
-                decoration: const InputDecoration(labelText: "Job Title"),
+                decoration: const InputDecoration(
+                  labelText: "Job Title",
+                  border: OutlineInputBorder(),
+                ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+
+              // NEW FIELDS
+              TextField(
+                controller: categoryCtrl,
+                decoration: const InputDecoration(
+                  labelText: "Category",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: locationCtrl,
+                decoration: const InputDecoration(
+                  labelText: "Location",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+
               TextField(
                 controller: descCtrl,
-                decoration: const InputDecoration(labelText: "Description"),
+                decoration: const InputDecoration(
+                  labelText: "Description",
+                  border: OutlineInputBorder(),
+                ),
                 maxLines: 4,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+
               Row(
                 children: [
                   Expanded(
@@ -151,6 +189,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
                         labelText: "Min Budget",
+                        border: OutlineInputBorder(),
                       ),
                     ),
                   ),
@@ -161,6 +200,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
                         labelText: "Max Budget",
+                        border: OutlineInputBorder(),
                       ),
                     ),
                   ),
@@ -171,33 +211,33 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-            ), // Close Dialog using dialogContext
+            // Use dialogContext to close the popup
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text("Cancel"),
           ),
           ElevatedButton(
             onPressed: () async {
-              // 1. Close the Dialog immediately
+              // 1. Close the Dialog using dialogContext
               Navigator.pop(dialogContext);
 
               // 2. Perform the update
               await _jobRepository.updateJob(widget.jobId, {
                 'title': titleCtrl.text,
+                'category': categoryCtrl.text, // Updates Category
+                'location': locationCtrl.text, // Updates Location
                 'description': descCtrl.text,
                 'budgetMin': double.tryParse(minBudgetCtrl.text) ?? 0,
                 'budgetMax': double.tryParse(maxBudgetCtrl.text) ?? 0,
               });
 
-              // 3. Use the PAGE context to show the message and go back
+              // 3. CRITICAL: Check mounted before using 'context'
               if (mounted) {
+                // 4. Use 'context' (Page Context) because 'dialogContext' is dead now
                 ScaffoldMessenger.of(context).showSnackBar(
-                  // Uses Page context (Safe)
-                  const SnackBar(content: Text("Job Updated!")),
+                  const SnackBar(content: Text("Job Updated! Please refresh.")),
                 );
-                Navigator.pop(
-                  context,
-                ); // Goes back to the list using Page context
+                // 5. Go back to the list
+                Navigator.pop(context);
               }
             },
             child: const Text("Save Changes"),
@@ -255,7 +295,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // --- SECTION 1: HEADER (Title & Price) ---
+                  // --- HEADER ---
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
@@ -274,7 +314,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Hired/Rejected Banners
                         if (widget.isHired && !isOwner)
                           _buildBanner(
                             Colors.green,
@@ -290,7 +329,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                             "Unfortunately, you were not selected.",
                           ),
 
-                        // TAG
+                        // TAG / CATEGORY
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
@@ -300,8 +339,13 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                             color: Colors.blue.shade50,
                             borderRadius: BorderRadius.circular(8),
                           ),
+                          // Uses 'tag' or 'category' safely
                           child: Text(
-                            widget.job['tag'].toString().toUpperCase(),
+                            (widget.job['tag'] ??
+                                    widget.job['category'] ??
+                                    "General")
+                                .toString()
+                                .toUpperCase(),
                             style: TextStyle(
                               color: Colors.blue.shade700,
                               fontSize: 11,
@@ -324,7 +368,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
 
                         const SizedBox(height: 12),
 
-                        // PRICE (HIERARCHY: BIGGER & BLUE)
+                        // PRICE
                         Text(
                           widget.job['price'] ??
                               "₱${widget.job['budgetMin']} - ₱${widget.job['budgetMax']}",
@@ -332,25 +376,24 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                             fontSize: 26,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF2E7EFF),
-                          ), // Blue
+                          ),
                         ),
                       ],
                     ),
                   ),
 
-                  // --- SECTION 2: SPECS (Grid) ---
+                  // --- DETAILS ---
                   Padding(
                     padding: const EdgeInsets.all(24.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Owner Profile (If not me)
                         if (!isOwner) ...[
                           _buildEmployerCard(),
                           const SizedBox(height: 24),
                         ],
 
-                        // STATS ROW (Clean Layout)
+                        // STATS ROW
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
@@ -384,7 +427,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
 
                         const SizedBox(height: 32),
 
-                        // DESCRIPTION HEADER
                         const Text(
                           "Job Description",
                           style: TextStyle(
@@ -395,7 +437,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                         ),
                         const SizedBox(height: 12),
 
-                        // DESCRIPTION TEXT (More Readable)
                         Text(
                           widget.job['description'] ??
                               "No description provided.",
@@ -403,10 +444,10 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                             color: Colors.grey[700],
                             height: 1.6,
                             fontSize: 16,
-                          ), // Better readability
+                          ),
                         ),
 
-                        const SizedBox(height: 40), // Bottom padding
+                        const SizedBox(height: 40),
                       ],
                     ),
                   ),
@@ -451,7 +492,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  flex: 2, // Action button takes more space
+                  flex: 2,
                   child: isOwner
                       ? ElevatedButton.icon(
                           onPressed: () {
@@ -520,16 +561,19 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     );
   }
 
-  // --- UI HELPERS ---
-
   Widget _buildStatItem(IconData icon, String label, String value) {
     return Column(
       children: [
         Icon(icon, color: Colors.grey[400], size: 20),
         const SizedBox(height: 8),
-        Text(
-          value,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        Container(
+          constraints: const BoxConstraints(maxWidth: 80), // Prevent overflow
+          child: Text(
+            value,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         const SizedBox(height: 4),
         Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 11)),
@@ -578,6 +622,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     );
   }
 
+  // --- UPDATED EMPLOYER CARD (Fixes "No Name" Issue) ---
   Widget _buildEmployerCard() {
     return StreamBuilder<DocumentSnapshot>(
       stream: widget.job['posterId'] != null
@@ -587,12 +632,35 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                 .snapshots()
           : null,
       builder: (context, snapshot) {
-        String name = widget.job['user'] ?? "Employer";
+        // 1. PRIORITY: Get name passed from the previous screen (Dashboard)
+        // We check all possible keys to ensure we catch the name Kym Bogani
+        String displayName =
+            widget.job['user'] ??
+            widget.job['posterName'] ??
+            widget.job['username'] ??
+            "Employer";
+
+        // 2. SECONDARY: If we have live data from the Users collection, try to get a better name
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>?;
-          name = data?['fullName'] ?? data?['firstName'] ?? name;
+          if (data != null) {
+            // Try 'fullName', then 'firstName' + 'lastName', then 'username'
+            if (data['fullName'] != null &&
+                data['fullName'].toString().isNotEmpty) {
+              displayName = data['fullName'];
+            } else if (data['firstName'] != null) {
+              displayName = "${data['firstName']} ${data['lastName'] ?? ''}"
+                  .trim();
+            } else if (data['username'] != null) {
+              displayName = data['username'];
+            }
+          }
         }
-        String firstLetter = name.isNotEmpty ? name[0].toUpperCase() : "E";
+
+        // Get the first letter for the avatar
+        String firstLetter = displayName.isNotEmpty
+            ? displayName[0].toUpperCase()
+            : "E";
 
         return Container(
           padding: const EdgeInsets.all(12),
@@ -603,6 +671,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
           ),
           child: Row(
             children: [
+              // Avatar
               Container(
                 width: 45,
                 height: 45,
@@ -624,6 +693,8 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                 ),
               ),
               const SizedBox(width: 12),
+
+              // Name and "Posted by" label
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -633,27 +704,31 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                       style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                     ),
                     Text(
-                      name,
+                      displayName, // <--- This will now show "Kym Bogani"
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
+                        color: Colors.black,
                       ),
                     ),
                   ],
                 ),
               ),
+
+              // View Profile Button
               TextButton(
                 onPressed: () {
-                  if (widget.job['posterId'] != null)
+                  if (widget.job['posterId'] != null) {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => PublicProfilePage(
                           userId: widget.job['posterId'],
-                          userName: name,
+                          userName: displayName,
                         ),
                       ),
                     );
+                  }
                 },
                 child: const Text(
                   "View Profile",
