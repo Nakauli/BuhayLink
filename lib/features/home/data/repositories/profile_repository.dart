@@ -1,36 +1,56 @@
 import 'dart:io';
+import 'dart:convert'; // Needed for JSON decoding
+import 'package:http/http.dart' as http; // Needed for Cloudinary upload
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 
 class ProfileRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
+  // Note: We removed FirebaseStorage because we are using Cloudinary now!
 
   String? getCurrentUserId() => _auth.currentUser?.uid;
 
-  // 1. UPLOAD IMAGE TO FIREBASE STORAGE
+  // 1. UPLOAD IMAGE TO CLOUDINARY (No Credit Card Required)
   Future<String> uploadProfileImage(File imageFile) async {
-    String? uid = getCurrentUserId();
-    if (uid == null) throw Exception("No user logged in");
+    // --- CONFIGURATION ---
+    // TODO: Replace this with your actual Cloud Name from the Dashboard
+    String cloudName = "drhbxeggn";
 
-    // Create a reference: users/USER_ID/profile.jpg
-    Reference ref = _storage.ref().child('users/$uid/profile.jpg');
+    // This is the name you typed in the settings earlier
+    String uploadPreset = "buhaylink_preset";
+    // ---------------------
 
-    // Upload the file
-    UploadTask uploadTask = ref.putFile(imageFile);
-    TaskSnapshot snapshot = await uploadTask;
+    // Prepare the upload to Cloudinary
+    final url = Uri.parse(
+      'https://api.cloudinary.com/v1_1/$cloudName/image/upload',
+    );
+    final request = http.MultipartRequest('POST', url)
+      ..fields['upload_preset'] = uploadPreset
+      ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
 
-    // Get the public URL to save in Firestore
-    return await snapshot.ref.getDownloadURL();
+    // Send the request
+    final response = await request.send();
+
+    // Handle the response
+    if (response.statusCode == 200) {
+      final responseData = await response.stream.toBytes();
+      final responseString = String.fromCharCodes(responseData);
+      final jsonMap = jsonDecode(responseString);
+
+      // Return the public link (URL) to your new photo
+      return jsonMap['secure_url'];
+    } else {
+      // Print error to console so we can debug if it fails
+      print("Cloudinary Upload Failed: ${response.statusCode}");
+      throw Exception("Failed to upload image. Please check your internet.");
+    }
   }
 
-  // 2. GET AUTOMATIC LOCATION (GPS)
+  // 2. GET AUTOMATIC LOCATION (GPS) - (Kept exactly the same)
   Future<String> getCurrentLocation() async {
-    // Check permissions
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -39,12 +59,10 @@ class ProfileRepository {
       }
     }
 
-    // Get current position
     Position position = await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
     );
 
-    // Convert coordinates to address (Reverse Geocoding)
     List<Placemark> placemarks = await placemarkFromCoordinates(
       position.latitude,
       position.longitude,
@@ -52,15 +70,14 @@ class ProfileRepository {
 
     if (placemarks.isNotEmpty) {
       Placemark place = placemarks[0];
-      return "${place.locality}, ${place.country}"; // e.g., "Davao, Philippines"
+      return "${place.locality}, ${place.country}";
     }
     return "Unknown Location";
   }
 
-  // 3. UPDATE PROFILE DATA
-  // Update this specific function inside your ProfileRepository class
+  // 3. UPDATE PROFILE DATA - (Kept exactly the same)
   Future<void> updateProfile({
-    String? name, // <-- ADD THIS
+    String? name,
     String? about,
     String? location,
     List<String>? skills,
@@ -70,7 +87,7 @@ class ProfileRepository {
     if (uid == null) throw Exception("No user logged in");
 
     Map<String, dynamic> dataToUpdate = {};
-    if (name != null) dataToUpdate['name'] = name; // <-- ADD THIS
+    if (name != null) dataToUpdate['name'] = name;
     if (about != null) dataToUpdate['about'] = about;
     if (location != null) dataToUpdate['location'] = location;
     if (skills != null) dataToUpdate['skills'] = skills;
@@ -79,7 +96,6 @@ class ProfileRepository {
     if (dataToUpdate.isNotEmpty) {
       await _firestore.collection('users').doc(uid).update(dataToUpdate);
 
-      // OPTIONAL: Also update the Auth profile name for consistency
       if (name != null) {
         await _auth.currentUser?.updateDisplayName(name);
       }
