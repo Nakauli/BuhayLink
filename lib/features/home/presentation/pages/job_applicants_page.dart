@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../../jobs/data/repositories/job_repository.dart'; // Ensure correct path
-import 'public_profile_page.dart'; // Ensure correct path
+import '../../../jobs/data/repositories/job_repository.dart';
+import 'public_profile_page.dart';
 
 class JobApplicantsPage extends StatefulWidget {
   final String jobId;
@@ -20,7 +20,7 @@ class JobApplicantsPage extends StatefulWidget {
 class _JobApplicantsPageState extends State<JobApplicantsPage> {
   final JobRepository _jobRepository = JobRepository();
 
-  // --- 1. SMART TIME HELPER (No extra packages needed) ---
+  // --- 1. TIME HELPER ---
   String _timeAgo(Timestamp? timestamp) {
     if (timestamp == null) return "Unknown";
     final DateTime appliedTime = timestamp.toDate();
@@ -95,21 +95,25 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
         leading: const BackButton(color: Colors.black),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // QUERY: Get applicants from the 'applicants' subcollection
+        // FIX 1: Simplified Query to avoid Index Errors
+        // We just get everyone sorted by time, and filter rejected ones below.
         stream: FirebaseFirestore.instance
             .collection('jobs')
             .doc(widget.jobId)
             .collection('applicants')
-            .where(
-              'status',
-              isNotEqualTo: 'rejected',
-            ) // Don't show rejected people
-            .orderBy('status')
             .orderBy('appliedAt', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting)
+          // Error Handling
+          if (snapshot.hasError) {
+            return Center(
+              child: Text("Something went wrong: ${snapshot.error}"),
+            );
+          }
+
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
 
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return const Center(
@@ -127,26 +131,41 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
             );
           }
 
+          // FIX 2: Manual Filtering
+          // We filter out 'rejected' users here in the code instead of the database
+          final docs = snapshot.data!.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return data['status'] != 'rejected';
+          }).toList();
+
+          if (docs.isEmpty) {
+            return const Center(
+              child: Text(
+                "No active applicants.",
+                style: TextStyle(color: Colors.grey),
+              ),
+            );
+          }
+
           return ListView.separated(
             padding: const EdgeInsets.all(16),
-            itemCount: snapshot.data!.docs.length,
+            itemCount: docs.length,
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
-              var doc = snapshot.data!.docs[index];
+              var doc = docs[index];
               var data = doc.data() as Map<String, dynamic>;
-              String applicantId = doc.id; // The ID is the document ID
+              String applicantId = doc.id;
 
               // Safe Data Handling
               String name = data['name'] ?? "Unknown";
-              String email = data['email'] ?? "No email";
+              // REMOVED: String email = data['email'] ?? "No email"; (This fixed the warning)
               String photoUrl = data['photoUrl'] ?? "";
               Timestamp? appliedAt = data['appliedAt'];
 
               // --- 4. SWIPE TO REJECT WRAPPER ---
               return Dismissible(
                 key: Key(applicantId),
-                direction:
-                    DismissDirection.endToStart, // Swipe Right to Left only
+                direction: DismissDirection.endToStart,
                 background: Container(
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 20),
@@ -186,7 +205,6 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                   _rejectApplicant(applicantId);
                 },
                 child: InkWell(
-                  // --- 5. CLICK TO VIEW PUBLIC PROFILE ---
                   onTap: () {
                     Navigator.push(
                       context,
@@ -214,16 +232,15 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                     ),
                     child: Row(
                       children: [
-                        // Avatar
                         CircleAvatar(
                           radius: 25,
-                          backgroundImage: photoUrl.isNotEmpty
+                          backgroundColor: Colors.blue.shade50,
+                          backgroundImage: (photoUrl.isNotEmpty)
                               ? NetworkImage(photoUrl)
                               : null,
-                          backgroundColor: Colors.blue.shade50,
                           child: photoUrl.isEmpty
                               ? Text(
-                                  name[0].toUpperCase(),
+                                  name.isNotEmpty ? name[0].toUpperCase() : "U",
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     color: Colors.blue,
@@ -232,8 +249,6 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                               : null,
                         ),
                         const SizedBox(width: 16),
-
-                        // Info
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -246,7 +261,6 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              // Functional Time Display
                               Row(
                                 children: [
                                   Icon(
@@ -268,8 +282,6 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                             ],
                           ),
                         ),
-
-                        // Hire Button
                         ElevatedButton(
                           onPressed: () => _hireApplicant(applicantId, name),
                           style: ElevatedButton.styleFrom(
