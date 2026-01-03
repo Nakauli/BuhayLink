@@ -3,15 +3,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-
 class ChatRepository {
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
 
   // Dependency Injection
   ChatRepository({FirebaseFirestore? firestore, FirebaseAuth? auth})
-      : _firestore = firestore ?? FirebaseFirestore.instance,
-        _auth = auth ?? FirebaseAuth.instance;
+    : _firestore = firestore ?? FirebaseFirestore.instance,
+      _auth = auth ?? FirebaseAuth.instance;
 
   // 1. GET MESSAGES (Real-time)
   Stream<QuerySnapshot> getMessagesStream(String chatRoomId) {
@@ -22,10 +21,13 @@ class ChatRepository {
         .orderBy('timestamp', descending: true)
         .snapshots();
   }
-  
 
   // 2. SEND MESSAGE
-  Future<void> sendMessage(String chatRoomId, String receiverId, String text) async {
+  Future<void> sendMessage(
+    String chatRoomId,
+    String receiverId,
+    String text,
+  ) async {
     final String senderId = _auth.currentUser?.uid ?? "";
     if (senderId.isEmpty || text.trim().isEmpty) return;
 
@@ -69,11 +71,16 @@ class ChatRepository {
   }
 
   // 5. START CHAT (Navigates & Ensures Doc Exists)
-  Future<void> startChat(BuildContext context, String receiverId, String receiverName) async {
-    final String currentUserId = _auth.currentUser?.uid ?? "";
-    if (currentUserId.isEmpty) return;
+  Future<void> startChat(
+    BuildContext context,
+    String receiverId,
+    String receiverName,
+    String? receiverPhoto,
+  ) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
 
-    List<String> ids = [currentUserId, receiverId];
+    List<String> ids = [currentUser.uid, receiverId];
     ids.sort(); // Ensure consistent ID generation
     String chatRoomId = ids.join("_");
 
@@ -81,10 +88,10 @@ class ChatRepository {
     final chatDoc = await _firestore.collection('chats').doc(chatRoomId).get();
     if (!chatDoc.exists) {
       await _firestore.collection('chats').doc(chatRoomId).set({
-        'users': ids, 
+        'users': ids,
         'lastTimestamp': FieldValue.serverTimestamp(),
         'lastMessage': 'Started a conversation',
-        'createdBy': currentUserId,
+        'createdBy': currentUser.uid,
       });
     }
 
@@ -100,6 +107,7 @@ class ChatRepository {
       );
     }
   }
+
   // SOLID: SRP - Handles fetching user profile data for the UI
   Stream<DocumentSnapshot> getUserProfileStream(String userId) {
     return _firestore.collection('users').doc(userId).snapshots();

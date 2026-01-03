@@ -61,18 +61,20 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     try {
       await _jobRepository.applyForJob(widget.jobId, widget.job);
       setState(() => _hasApplied = true);
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Application Sent!"),
             backgroundColor: Colors.green,
           ),
         );
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
     } finally {
       if (mounted) setState(() => _isApplying = false);
     }
@@ -83,7 +85,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     showDialog(
       context: context, // Uses Page Context
       builder: (dialogContext) => AlertDialog(
-        // Uses NEW Dialog Context
         title: const Text("Delete Job?"),
         content: const Text(
           "Are you sure you want to remove this job post? This cannot be undone.",
@@ -117,11 +118,11 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     );
   }
 
-  // --- EDIT FUNCTION (Fixed Context + Added Category/Location) ---
+  // --- EDIT FUNCTION ---
   void _showEditDialog() {
     // 1. Setup Controllers
     final titleCtrl = TextEditingController(text: widget.job['title']);
-    // Try 'tag' first, then 'category' (handles different database naming)
+    // Try 'tag' first, then 'category'
     final categoryCtrl = TextEditingController(
       text: widget.job['tag'] ?? widget.job['category'] ?? "",
     );
@@ -136,8 +137,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     );
 
     showDialog(
-      context: context, // 1. Pass the PAGE context here
-      // 2. CRITICAL FIX: Name this 'dialogContext' to avoid confusion!
+      context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text("Edit Job Details"),
         content: SingleChildScrollView(
@@ -211,32 +211,26 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         ),
         actions: [
           TextButton(
-            // Use dialogContext to close the popup
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text("Cancel"),
           ),
           ElevatedButton(
             onPressed: () async {
-              // 1. Close the Dialog using dialogContext
               Navigator.pop(dialogContext);
 
-              // 2. Perform the update
               await _jobRepository.updateJob(widget.jobId, {
                 'title': titleCtrl.text,
-                'category': categoryCtrl.text, // Updates Category
-                'location': locationCtrl.text, // Updates Location
+                'category': categoryCtrl.text,
+                'location': locationCtrl.text,
                 'description': descCtrl.text,
                 'budgetMin': double.tryParse(minBudgetCtrl.text) ?? 0,
                 'budgetMax': double.tryParse(maxBudgetCtrl.text) ?? 0,
               });
 
-              // 3. CRITICAL: Check mounted before using 'context'
               if (mounted) {
-                // 4. Use 'context' (Page Context) because 'dialogContext' is dead now
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text("Job Updated! Please refresh.")),
                 );
-                // 5. Go back to the list
                 Navigator.pop(context);
               }
             },
@@ -249,9 +243,11 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
+    // FIX: Check postedBy as well for ownership check
     final currentUser = FirebaseAuth.instance.currentUser;
     final String currentUid = currentUser?.uid ?? "";
-    final String posterId = (widget.job['posterId'] ?? "").toString();
+    final String posterId =
+        widget.job['posterId'] ?? widget.job['postedBy'] ?? "";
     final bool isOwner = currentUid.isNotEmpty && currentUid == posterId;
 
     return Scaffold(
@@ -339,7 +335,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                             color: Colors.blue.shade50,
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          // Uses 'tag' or 'category' safely
                           child: Text(
                             (widget.job['tag'] ??
                                     widget.job['category'] ??
@@ -567,7 +562,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         Icon(icon, color: Colors.grey[400], size: 20),
         const SizedBox(height: 8),
         Container(
-          constraints: const BoxConstraints(maxWidth: 80), // Prevent overflow
+          constraints: const BoxConstraints(maxWidth: 80),
           child: Text(
             value,
             textAlign: TextAlign.center,
@@ -622,42 +617,42 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     );
   }
 
-  // --- UPDATED EMPLOYER CARD (Fixes "No Name" Issue) ---
+  // --- UPDATED EMPLOYER CARD (FIXED) ---
   Widget _buildEmployerCard() {
+    // 1. Check BOTH potential field names for the User ID
+    final String userId =
+        widget.job['posterId'] ?? widget.job['postedBy'] ?? "";
+
     return StreamBuilder<DocumentSnapshot>(
-      stream: widget.job['posterId'] != null
+      // 2. Use the userId we just found
+      stream: userId.isNotEmpty
           ? FirebaseFirestore.instance
                 .collection('users')
-                .doc(widget.job['posterId'])
+                .doc(userId)
                 .snapshots()
           : null,
       builder: (context, snapshot) {
-        // 1. PRIORITY: Get name passed from the previous screen (Dashboard)
-        // We check all possible keys to ensure we catch the name Kym Bogani
-        String displayName =
-            widget.job['user'] ??
-            widget.job['posterName'] ??
-            widget.job['username'] ??
-            "Employer";
+        // Defaults if no data
+        String displayName = widget.job['posterName'] ?? "Employer";
+        String? photoUrl;
 
-        // 2. SECONDARY: If we have live data from the Users collection, try to get a better name
+        // 3. Update with Live Data
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>?;
           if (data != null) {
-            // Try 'fullName', then 'firstName' + 'lastName', then 'username'
-            if (data['fullName'] != null &&
-                data['fullName'].toString().isNotEmpty) {
-              displayName = data['fullName'];
-            } else if (data['firstName'] != null) {
-              displayName = "${data['firstName']} ${data['lastName'] ?? ''}"
-                  .trim();
-            } else if (data['username'] != null) {
-              displayName = data['username'];
-            }
+            // Check 'name' first, then fallback to 'fullName', etc.
+            displayName =
+                data['name'] ??
+                data['fullName'] ??
+                data['firstName'] ??
+                displayName;
+
+            // Check 'photoUrl' first, then fallback
+            photoUrl =
+                data['photoUrl'] ?? data['profileImage'] ?? data['imageUrl'];
           }
         }
 
-        // Get the first letter for the avatar
         String firstLetter = displayName.isNotEmpty
             ? displayName[0].toUpperCase()
             : "E";
@@ -672,29 +667,25 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
           child: Row(
             children: [
               // Avatar
-              Container(
-                width: 45,
-                height: 45,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [Colors.blue.shade300, Colors.purple.shade300],
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    firstLetter,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: Colors.blue.shade100,
+                backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+                    ? NetworkImage(photoUrl)
+                    : null,
+                child: (photoUrl == null || photoUrl.isEmpty)
+                    ? Text(
+                        firstLetter,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                      )
+                    : null,
               ),
               const SizedBox(width: 12),
 
-              // Name and "Posted by" label
+              // Name
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -704,10 +695,10 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                       style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                     ),
                     Text(
-                      displayName, // <--- This will now show "Kym Bogani"
+                      displayName,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                        fontSize: 16,
                         color: Colors.black,
                       ),
                     ),
@@ -718,22 +709,20 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
               // View Profile Button
               TextButton(
                 onPressed: () {
-                  if (widget.job['posterId'] != null) {
+                  // 4. Navigate using the correct userId
+                  if (userId.isNotEmpty) {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => PublicProfilePage(
-                          userId: widget.job['posterId'],
+                          userId: userId,
                           userName: displayName,
                         ),
                       ),
                     );
                   }
                 },
-                child: const Text(
-                  "View Profile",
-                  style: TextStyle(fontSize: 12),
-                ),
+                child: const Text("View Profile"),
               ),
             ],
           ),

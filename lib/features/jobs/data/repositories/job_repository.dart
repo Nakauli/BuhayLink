@@ -40,6 +40,12 @@ class JobRepository {
         .snapshots();
   }
 
+  // --- HELPER: Capitalize First Letter ---
+  String _capitalize(String input) {
+    if (input.isEmpty) return input;
+    return input[0].toUpperCase() + input.substring(1);
+  }
+
   Future<void> postJob({
     required String title,
     required String description,
@@ -53,17 +59,44 @@ class JobRepository {
     final user = _auth.currentUser;
     if (user == null) throw Exception("User not logged in");
 
-    String posterName = "Employer";
-    final userDoc = await _firestore.collection('users').doc(user.uid).get();
-    if (userDoc.exists) {
-      final data = userDoc.data();
-      posterName =
-          data?['fullName'] ??
-          data?['firstName'] ??
-          data?['username'] ??
-          user.email!.split('@')[0];
+    // 1. DEFAULT: Grab name from Email or Auth Display Name immediately
+    //    Example: "mannypacman@gmail.com" -> "mannypacman"
+    String rawName =
+        user.displayName ?? user.email?.split('@')[0] ?? "Employer";
+    String posterPhoto = user.photoURL ?? "";
+
+    // 2. CHECK DATABASE: If a custom profile exists, prefer that data
+    try {
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (userDoc.exists) {
+        final data = userDoc.data();
+        if (data != null) {
+          // Check for custom name
+          final dbName =
+              data['name'] ??
+              data['fullName'] ??
+              data['firstName'] ??
+              data['username'];
+          if (dbName != null && dbName.toString().isNotEmpty) {
+            rawName = dbName;
+          }
+          // Check for custom photo
+          final dbPhoto =
+              data['photoUrl'] ?? data['profileImage'] ?? data['imageUrl'];
+          if (dbPhoto != null && dbPhoto.toString().isNotEmpty) {
+            posterPhoto = dbPhoto;
+          }
+        }
+      }
+    } catch (e) {
+      print("Error fetching profile: $e");
     }
 
+    // 3. CAPITALIZE: Ensure the first letter is uppercase
+    //    Example: "mannypacman" -> "Mannypacman"
+    String finalPosterName = _capitalize(rawName);
+
+    // 4. SAVE JOB with the Capitalized Name
     DocumentReference jobRef = await _firestore.collection('jobs').add({
       'title': title,
       'description': description,
@@ -73,8 +106,11 @@ class JobRepository {
       'location': location,
       'duration': duration,
       'isUrgent': isUrgent,
+
       'postedBy': user.uid,
-      'posterName': posterName,
+      'posterName': finalPosterName, // <--- SAVING "Mannypacman"
+      'posterPhoto': posterPhoto,
+
       'posterRating': 0.0,
       'applicants': 0,
       'postedAt': FieldValue.serverTimestamp(),

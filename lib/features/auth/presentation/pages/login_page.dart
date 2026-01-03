@@ -1,8 +1,7 @@
 import 'package:buhay_link/features/home/presentation/pages/dashboard_page.dart';
 import 'package:flutter/material.dart';
-import '../../data/auth_service.dart';
-
-
+// FIX: Import the Repository, NOT the Service
+import '../../data/repositories/auth_repository.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -13,15 +12,17 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   // --- CONTROLLERS ---
-  final TextEditingController _fullNameController = TextEditingController(); 
+  final TextEditingController _fullNameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController(); 
-  
+  final TextEditingController _phoneController = TextEditingController();
+
   // --- STATE ---
-  bool isLogin = true; 
+  bool isLogin = true;
   bool isLoading = false;
-  final AuthService _authService = AuthService();
+
+  // FIX: Use AuthRepository (The Brain)
+  final AuthRepository _authRepository = AuthRepository();
 
   // --- LOGIC ---
   void _submitForm() async {
@@ -30,26 +31,26 @@ class _LoginPageState extends State<LoginPage> {
     try {
       if (isLogin) {
         // Login Logic
-        await _authService.signIn(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+        await _authRepository.signIn(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
         );
       } else {
-        // Register Logic
-        await _authService.signUp(
-          username: _fullNameController.text.trim(),
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+        // Register Logic (NOW USES THE REPOSITORY WITH PROFILE CREATION)
+        await _authRepository.signUp(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
+          _fullNameController.text.trim(),
         );
       }
 
       if (mounted) {
         // 1. Show Success Message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Success! Welcome.")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Success! Welcome.")));
 
-        // 2. NAVIGATE TO DASHBOARD (This is what you were missing!)
+        // 2. Navigate to Dashboard
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const DashboardPage()),
@@ -87,23 +88,25 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               children: [
                 const SizedBox(height: 40),
-                
+
                 // --- LOGO ---
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withOpacity(0.2), width: 8),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.2),
+                      width: 8,
+                    ),
                   ),
                   child: Container(
                     width: 60,
                     height: 60,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white, // White background for the circle
+                      color: Colors.white,
                     ),
                     child: Center(
-                      // Gradient Icon Logic using ShaderMask
                       child: ShaderMask(
                         shaderCallback: (Rect bounds) {
                           return const LinearGradient(
@@ -113,19 +116,29 @@ class _LoginPageState extends State<LoginPage> {
                           ).createShader(bounds);
                         },
                         child: const Icon(
-                          Icons.link, // The Link Icon representing "BuhayLink"
+                          Icons.link,
                           size: 36,
-                          color: Colors.white, // This color is ignored by the ShaderMask but required
+                          color: Colors.white,
                         ),
                       ),
                     ),
                   ),
                 ),
-                
-                // --- APP NAME UPDATED HERE ---
-                const Text("BuhayLink", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+
+                // --- APP NAME ---
+                const Text(
+                  "BuhayLink",
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                const Text("Connect. Work. Earn.", style: TextStyle(fontSize: 14, color: Colors.white70)),
+                const Text(
+                  "Connect. Work. Earn.",
+                  style: TextStyle(fontSize: 14, color: Colors.white70),
+                ),
                 const SizedBox(height: 30),
 
                 // --- WHITE CARD ---
@@ -141,7 +154,10 @@ class _LoginPageState extends State<LoginPage> {
                       // 1. TABS (Login / Register)
                       Container(
                         padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         child: Row(
                           children: [
                             _buildTab("Login", true),
@@ -153,29 +169,58 @@ class _LoginPageState extends State<LoginPage> {
 
                       // 2. INPUT FIELDS
                       if (isLogin) ...[
-                        _buildTextField(_emailController, "Email Address", Icons.email_outlined),
+                        _buildTextField(
+                          _emailController,
+                          "Email Address",
+                          Icons.email_outlined,
+                        ),
                         const SizedBox(height: 16),
-                        _buildTextField(_passwordController, "Password", Icons.lock_outline, isPassword: true),
-                        
+                        _buildTextField(
+                          _passwordController,
+                          "Password",
+                          Icons.lock_outline,
+                          isPassword: true,
+                        ),
+
                         const SizedBox(height: 12),
-                        
+
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
                             onPressed: () {},
-                            child: const Text("Forgot Password?", style: TextStyle(color: Color(0xFF2E7EFF))),
+                            child: const Text(
+                              "Forgot Password?",
+                              style: TextStyle(color: Color(0xFF2E7EFF)),
+                            ),
                           ),
                         ),
                       ] else ...[
-                        _buildTextField(_fullNameController, "Full Name", Icons.person_outline),
+                        _buildTextField(
+                          _fullNameController,
+                          "Full Name",
+                          Icons.person_outline,
+                        ),
                         const SizedBox(height: 16),
-                        _buildTextField(_emailController, "Email Address", Icons.email_outlined),
+                        _buildTextField(
+                          _emailController,
+                          "Email Address",
+                          Icons.email_outlined,
+                        ),
                         const SizedBox(height: 16),
-                        _buildTextField(_phoneController, "Mobile Number", Icons.phone_outlined),
+                        _buildTextField(
+                          _phoneController,
+                          "Mobile Number",
+                          Icons.phone_outlined,
+                        ),
                         const SizedBox(height: 16),
-                        _buildTextField(_passwordController, "Password", Icons.lock_outline, isPassword: true),
+                        _buildTextField(
+                          _passwordController,
+                          "Password",
+                          Icons.lock_outline,
+                          isPassword: true,
+                        ),
                       ],
-                      
+
                       const SizedBox(height: 24),
 
                       // 3. MAIN BUTTON
@@ -183,7 +228,9 @@ class _LoginPageState extends State<LoginPage> {
                         width: double.infinity,
                         height: 55,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [Color(0xFF2E7EFF), Color(0xFF9542FF)]),
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF2E7EFF), Color(0xFF9542FF)],
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: ElevatedButton(
@@ -191,14 +238,22 @@ class _LoginPageState extends State<LoginPage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.transparent,
                             shadowColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
-                          child: isLoading 
-                            ? const CircularProgressIndicator(color: Colors.white)
-                            : Text(
-                                isLogin ? "Login" : "Create Account",
-                                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                              ),
+                          child: isLoading
+                              ? const CircularProgressIndicator(
+                                  color: Colors.white,
+                                )
+                              : Text(
+                                  isLogin ? "Login" : "Create Account",
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                         ),
                       ),
 
@@ -210,23 +265,41 @@ class _LoginPageState extends State<LoginPage> {
                           Expanded(child: Divider(color: Colors.grey[300])),
                           const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 16),
-                            child: Text("or continue with", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                            child: Text(
+                              "or continue with",
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
+                            ),
                           ),
                           Expanded(child: Divider(color: Colors.grey[300])),
                         ],
                       ),
                       const SizedBox(height: 20),
-                      
+
                       OutlinedButton.icon(
                         onPressed: () {},
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           side: BorderSide(color: Colors.grey.shade300),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                           minimumSize: const Size(double.infinity, 50),
                         ),
-                        icon: const Icon(Icons.g_mobiledata, size: 30, color: Colors.black),
-                        label: const Text("Google", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+                        icon: const Icon(
+                          Icons.g_mobiledata,
+                          size: 30,
+                          color: Colors.black,
+                        ),
+                        label: const Text(
+                          "Google",
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 10),
                     ],
@@ -274,7 +347,12 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String hint, IconData icon, {bool isPassword = false}) {
+  Widget _buildTextField(
+    TextEditingController controller,
+    String hint,
+    IconData icon, {
+    bool isPassword = false,
+  }) {
     return TextField(
       controller: controller,
       obscureText: isPassword,

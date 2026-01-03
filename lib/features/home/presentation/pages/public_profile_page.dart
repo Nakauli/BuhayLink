@@ -1,16 +1,15 @@
-import 'package:buhay_link/features/jobs/data/repositories/chat_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 // SOLID: Import Repositories
 import '../../../jobs/data/repositories/job_repository.dart';
-
-import 'hired_jobs_page.dart';
+import '../../../jobs/data/repositories/chat_repository.dart'; // Ensure you have this file created
+import 'hired_jobs_page.dart'; // Ensure this file exists
 
 class PublicProfilePage extends StatefulWidget {
   final String userId;
   final String userName;
-  final String? jobId;
-  final String? jobTitle;
+  final String? jobId; // Optional: Only passed if viewing an applicant
+  final String? jobTitle; // Optional: Only passed if viewing an applicant
 
   const PublicProfilePage({
     super.key,
@@ -25,17 +24,16 @@ class PublicProfilePage extends StatefulWidget {
 }
 
 class _PublicProfilePageState extends State<PublicProfilePage> {
-  // SOLID: DIP - Depend on Repositories
   final JobRepository _jobRepository = JobRepository();
   final ChatRepository _chatRepository = ChatRepository();
 
-  // ignore: unused_field
   bool _isLoading = false;
-  String? _decisionStatus;
+  String? _decisionStatus; // 'hired', 'rejected', or null
 
   @override
   void initState() {
     super.initState();
+    // Only check for decision if we are viewing this person as an applicant
     if (widget.jobId != null) {
       _loadDecision();
     }
@@ -49,15 +47,18 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     if (mounted) setState(() => _decisionStatus = status);
   }
 
+  // --- HIRE LOGIC ---
   Future<void> _handleHire() async {
     setState(() => _isLoading = true);
     try {
       await _jobRepository.hireApplicant(
-        widget.userId,
-        widget.jobId!,
-        widget.jobTitle ?? '',
+        widget.jobId!, // 1. Job ID
+        widget.userId, // 2. Applicant ID
+        widget.jobTitle ?? '', // 3. Title
       );
+
       setState(() => _decisionStatus = 'hired');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -67,11 +68,61 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
         );
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- REJECT LOGIC (Fixed) ---
+  Future<void> _handleReject() async {
+    // 1. Confirmation Dialog
+    bool? confirm = await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Reject Applicant?"),
+        content: const Text(
+          "Are you sure? They will be removed from the list.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Reject", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isLoading = true);
+    try {
+      // 2. Call Repository (FIXED ARGUMENT ORDER)
+      await _jobRepository.rejectApplicant(
+        widget.jobId!, // Job ID First!
+        widget.userId, // Applicant ID Second!
+      );
+
+      // 3. Update UI instantly
+      setState(() => _decisionStatus = 'rejected');
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Applicant Rejected.")));
       }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -85,9 +136,12 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: const BackButton(color: Colors.black),
-        title: const Text(
-          "Profile",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        title: Text(
+          widget.userName,
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
       body: StreamBuilder<DocumentSnapshot>(
@@ -97,13 +151,47 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
             return const Center(child: CircularProgressIndicator());
 
           final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
-          final name = data['fullName'] ?? data['firstName'] ?? widget.userName;
+
+          // --- ROBUST DATA FETCHING ---
+
+          // 1. Name: Check 'name', then 'fullName', then 'firstName'
+          final String name =
+              data['name'] ??
+              data['fullName'] ??
+              data['firstName'] ??
+              widget.userName;
+
+          // 2. Photo: Check 'photoUrl', then 'profileImage', then 'imageUrl'
+          final String photoUrl =
+              data['photoUrl'] ??
+              data['profileImage'] ??
+              data['imageUrl'] ??
+              "";
+
+          // 3. Location: Check 'location', then 'address'
+          final String location =
+              data['location'] ?? data['address'] ?? "Philippines";
+
+          // 4. About: Check 'about', then 'bio', then 'description'
+          final String about =
+              data['about'] ??
+              data['bio'] ??
+              data['description'] ??
+              "No about info provided.";
+
+          // 5. Skills: Ensure it's a list
+          List<dynamic> skills = [];
+          if (data['skills'] is List) {
+            skills = data['skills'];
+          }
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-                _buildAvatar(name),
+                // Pass the correctly fetched photoUrl here
+                _buildAvatar(name, photoUrl),
+
                 const SizedBox(height: 16),
                 Text(
                   name,
@@ -113,32 +201,78 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                   ),
                 ),
                 Text(
-                  data['location'] ?? "Philippines",
+                  location, // Using the fetched location
                   style: TextStyle(color: Colors.grey[600]),
                 ),
+
                 const SizedBox(height: 24),
                 _buildTrustBadges(),
+
                 const SizedBox(height: 32),
                 _buildStatsRow(data),
+
                 const SizedBox(height: 32),
                 const Divider(),
                 const SizedBox(height: 24),
-                _buildAboutSection(data['bio'] ?? "No bio available."),
-                const SizedBox(height: 40),
 
+                // Using the fetched about text
+                _buildAboutSection(about),
+
+                const SizedBox(height: 24),
+
+                // --- NEW: SKILLS SECTION ---
+                if (skills.isNotEmpty) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "Skills",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: skills
+                        .map(
+                          (s) => Chip(
+                            label: Text(s.toString()),
+                            backgroundColor: Colors.blue[50],
+                            labelStyle: TextStyle(color: Colors.blue[800]),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 40),
+                ],
+
+                // ... (Rest of your buttons logic) ...
                 // --- DECISION BUTTONS ---
+                // Shows Hire/Reject ONLY if we came from a Job context AND no decision exists
                 if (_decisionStatus != null)
                   _buildDecisionBanner()
                 else if (widget.jobId != null)
                   _buildActionButtons(),
 
-                // --- CONTACT BUTTON (Functional via ChatRepository) ---
+                const SizedBox(height: 16),
+
+                // --- CONTACT BUTTON ---
                 SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: OutlinedButton.icon(
-                    onPressed: () =>
-                        _chatRepository.startChat(context, widget.userId, name),
+                    onPressed: () {
+                      // FIX: Pass 4 arguments (Context, ID, Name, Current User Name)
+                      _chatRepository.startChat(
+                        context,
+                        widget.userId,
+                        name,
+                        photoUrl,
+                      );
+                    },
                     icon: const Icon(Icons.message_outlined),
                     label: const Text("Contact"),
                     style: OutlinedButton.styleFrom(
@@ -156,23 +290,26 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     );
   }
 
-  // --- UI HELPER WIDGETS (SRP for UI) ---
+  // --- UI HELPER WIDGETS ---
 
-  Widget _buildAvatar(String name) {
+  Widget _buildAvatar(String name, String photoUrl) {
     return Stack(
       alignment: Alignment.bottomRight,
       children: [
         CircleAvatar(
           radius: 55,
-          backgroundColor: Colors.blue[700],
-          child: Text(
-            name[0].toUpperCase(),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 45,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          backgroundColor: Colors.blue[100],
+          backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+          child: photoUrl.isEmpty
+              ? Text(
+                  name.isNotEmpty ? name[0].toUpperCase() : "U",
+                  style: const TextStyle(
+                    color: Colors.blue,
+                    fontSize: 45,
+                    fontWeight: FontWeight.bold,
+                  ),
+                )
+              : null,
         ),
         const Icon(Icons.verified, color: Colors.blue, size: 28),
       ],
@@ -242,16 +379,20 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
   }
 
   Widget _buildAboutSection(String bio) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "About",
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        Text(bio, style: const TextStyle(height: 1.5)),
-      ],
+    return Align(
+      // Aligns text to start properly
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "About",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(bio, style: const TextStyle(height: 1.5, color: Colors.black87)),
+        ],
+      ),
     );
   }
 
@@ -285,16 +426,39 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
         children: [
           Expanded(
             child: OutlinedButton(
-              onPressed: () =>
-                  _jobRepository.rejectApplicant(widget.userId, widget.jobId!),
-              child: const Text("Reject"),
+              onPressed: _isLoading ? null : _handleReject, // Uses new handler
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.red),
+                foregroundColor: Colors.red,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text("Reject"),
             ),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: ElevatedButton(
-              onPressed: _handleHire,
-              child: const Text("Hire"),
+              onPressed: _isLoading ? null : _handleHire,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text("Hire"),
             ),
           ),
         ],
