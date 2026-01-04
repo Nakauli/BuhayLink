@@ -2,7 +2,6 @@ import 'package:buhay_link/widgets/notification_badge.dart';
 import 'package:buhay_link/features/jobs/data/repositories/dashboard_repository.dart';
 import 'package:buhay_link/widgets/job_card.dart';
 import 'package:buhay_link/widgets/stat_card.dart';
-import 'package:buhay_link/widgets/topic_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';

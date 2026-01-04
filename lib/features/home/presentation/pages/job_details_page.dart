@@ -1,3 +1,4 @@
+import 'package:buhay_link/widgets/rate_user_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -45,6 +46,61 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         _isSaved = saved;
       });
     }
+  }
+
+  // Function to show the dialog
+  void _showRatingDialog() {
+    // 1. Identify who we are rating
+    // If I am the Owner, I rate the Applicant (Hired User).
+    // If I am the Applicant, I rate the Owner (Poster).
+
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final String posterId = widget.job['posterId'] ?? widget.job['postedBy'];
+    final String? hiredId =
+        widget.job['hiredApplicantId']; // Make sure you save this when hiring!
+
+    String targetId = "";
+
+    if (currentUser?.uid == posterId) {
+      // I am the Boss, I rate the Employee
+      targetId = hiredId ?? "";
+    } else {
+      // I am the Employee, I rate the Boss
+      targetId = posterId;
+    }
+
+    if (targetId.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("No user to rate found.")));
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => RateUserDialog(
+        targetUserId: targetId,
+        jobId: widget.jobId,
+        onSubmit: (rating, review) async {
+          // Call Repository
+          await _jobRepository.rateUser(
+            targetUserId: targetId,
+            rating: rating,
+            review: review,
+            jobId: widget.jobId,
+          );
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Rating submitted!"),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        },
+      ),
+    );
   }
 
   Future<void> _toggleSaveJob() async {
@@ -323,6 +379,23 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                             Icons.cancel,
                             "Application Update",
                             "Unfortunately, you were not selected.",
+                          ),
+                        // Example: Only show this button if the job is 'hired' or 'completed'
+                        if (widget.isHired)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24.0,
+                              vertical: 10,
+                            ),
+                            child: ElevatedButton.icon(
+                              onPressed: _showRatingDialog,
+                              icon: const Icon(Icons.star),
+                              label: const Text("Rate User"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.amber[700],
+                                minimumSize: const Size(double.infinity, 50),
+                              ),
+                            ),
                           ),
 
                         // TAG / CATEGORY
