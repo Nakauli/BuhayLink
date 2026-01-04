@@ -1,6 +1,8 @@
+import 'package:buhay_link/widgets/notification_badge.dart';
 import 'package:buhay_link/features/jobs/data/repositories/dashboard_repository.dart';
 import 'package:buhay_link/widgets/job_card.dart';
 import 'package:buhay_link/widgets/stat_card.dart';
+import 'package:buhay_link/widgets/topic_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -26,6 +28,36 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  // --- HELPER: Mark specific notification types as read ---
+  Future<void> _markAsRead(List<String> types) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('notifications')
+          .where('recipientId', whereIn: [uid, 'all'])
+          .where('read', isEqualTo: false)
+          .get();
+
+      final docsToUpdate = snapshot.docs.where((doc) {
+        final data = doc.data();
+        final type = data['type'] as String? ?? '';
+        return types.contains(type);
+      }).toList();
+
+      if (docsToUpdate.isEmpty) return;
+
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+      for (var doc in docsToUpdate) {
+        batch.update(doc.reference, {'read': true});
+      }
+      await batch.commit();
+    } catch (e) {
+      print("Error marking as read: $e");
+    }
+  }
+
   // 1. Initialize Repository (SOLID: Dependency Inversion)
   final _repository = DashboardRepository();
 
@@ -41,29 +73,39 @@ class _DashboardPageState extends State<DashboardPage> {
       body: _selectedIndex == 0 ? _buildHomeWithHeader() : _getBodyContent(),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
-        onTap: (index) => setState(() => _selectedIndex = index),
         type: BottomNavigationBarType.fixed,
         selectedItemColor: const Color(0xFF2E7EFF),
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: true,
+
+        // --- UPDATED: SIMPLE NAVIGATION ONLY ---
+        // (We removed the _markAsRead logic here because the Bell handles it now)
+        onTap: (index) => setState(() => _selectedIndex = index),
+
+        // ---------------------------------------
         items: [
+          // 0. HOME TAB (Clean - No Badge)
           const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+
+          // 1. SEARCH TAB
           const BottomNavigationBarItem(
             icon: Icon(Icons.search),
             label: "Search",
           ),
+
+          // 2. DYNAMIC TAB (Clean - No Badge)
           BottomNavigationBarItem(
-            icon: Icon(
-              _showMyPosts ? Icons.add_circle : Icons.assignment,
-              size: 40,
-              color: const Color(0xFF2E7EFF),
-            ),
+            icon: Icon(_showMyPosts ? Icons.add_circle : Icons.assignment),
             label: _showMyPosts ? "Post" : "Applied",
           ),
+
+          // 3. MESSAGES TAB
           const BottomNavigationBarItem(
             icon: Icon(Icons.message),
             label: "Messages",
           ),
+
+          // 4. PROFILE TAB
           const BottomNavigationBarItem(
             icon: Icon(Icons.person),
             label: "Profile",
@@ -156,8 +198,27 @@ class _DashboardPageState extends State<DashboardPage> {
                     ],
                   ),
 
+                  // --- NOTIFICATION BELL (The only place with logic) ---
                   GestureDetector(
                     onTap: () {
+                      // 1. Mark as Read immediately when Bell is clicked
+                      if (_showMyPosts) {
+                        // Employer Mode: Clear Applicant alerts
+                        _markAsRead(['application']);
+                      } else {
+                        // Seeker Mode: Clear New Jobs & Status alerts
+                        // (Make sure to include ALL spellings your DB uses)
+                        _markAsRead([
+                          'new_post',
+                          'post',
+                          'job_post',
+                          'created',
+                          'hired',
+                          'rejected',
+                        ]);
+                      }
+
+                      // 2. Navigate to Notifications Page
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -172,9 +233,11 @@ class _DashboardPageState extends State<DashboardPage> {
                         color: Colors.white.withOpacity(0.2),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        Icons.notifications,
+                      // The Badge stays here
+                      child: NotificationBadge(
+                        icon: Icons.notifications,
                         color: Colors.white,
+                        isEmployerMode: _showMyPosts,
                       ),
                     ),
                   ),

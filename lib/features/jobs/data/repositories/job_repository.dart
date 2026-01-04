@@ -131,29 +131,35 @@ class JobRepository {
 
   // --- CORE FEATURES: APPLY, HIRE, REJECT ---
 
-  // 1. APPLY FOR JOB
+  // 1. APPLY FOR JOB (Fixed Notification Logic)
   Future<void> applyForJob(String jobId, Map<String, dynamic> jobData) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception("User not logged in");
 
+    // Get the Employer ID (Handle both naming conventions)
     final String employerId = jobData['posterId'] ?? jobData['postedBy'] ?? "";
 
     String applicantName =
         user.displayName ?? user.email?.split('@')[0] ?? "Applicant";
     String photoUrl = user.photoURL ?? "";
 
-    final userDoc = await _firestore.collection('users').doc(user.uid).get();
-    if (userDoc.exists) {
-      final data = userDoc.data();
-      if (data != null) {
-        if (data['fullName'] != null) applicantName = data['fullName'];
-        if (data['profileImage'] != null) photoUrl = data['profileImage'];
+    // Fetch latest name/photo from DB
+    try {
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (userDoc.exists) {
+        final data = userDoc.data();
+        if (data != null) {
+          if (data['fullName'] != null) applicantName = data['fullName'];
+          if (data['profileImage'] != null) photoUrl = data['profileImage'];
+        }
       }
+    } catch (e) {
+      print("Error fetching user details: $e");
     }
 
     WriteBatch batch = _firestore.batch();
 
-    // A. Add to Job's 'applicants' subcollection (CRITICAL FIX)
+    // A. Add to Job's 'applicants' subcollection
     DocumentReference jobApplicantRef = _firestore
         .collection('jobs')
         .doc(jobId)
@@ -183,18 +189,28 @@ class JobRepository {
       'employerId': employerId,
     });
 
-    // C. Notification for Employer
-    DocumentReference notifRef = _firestore.collection('notifications').doc();
-    batch.set(notifRef, {
-      'recipientId': employerId,
-      'title': 'New Applicant',
-      'message': "$applicantName has applied for: ${jobData['title']}",
-      'applicantId': user.uid,
-      'jobId': jobId,
-      'read': false,
-      'timestamp': FieldValue.serverTimestamp(),
-      'type': 'application',
-    });
+    // =========================================================
+    // C. Notification for Employer (UPDATED & FIXED)
+    // =========================================================
+    // Only send if the Employer exists and IT IS NOT ME (Prevent self-notification)
+    if (employerId.isNotEmpty && employerId != user.uid) {
+      DocumentReference notifRef = _firestore.collection('notifications').doc();
+      batch.set(notifRef, {
+        'type': 'application', // <--- EXACT SPELLING REQUIRED
+        'recipientId': employerId, // Send to Employer
+        'posterId': user.uid, // <--- "Who sent it?" (The Applicant)
+        'jobId': jobId,
+        'title': 'New Applicant',
+        'body': "$applicantName applied for: ${jobData['title']}",
+        'read': false, // <--- Triggers the Red Dot
+        'timestamp': FieldValue.serverTimestamp(),
+
+        // Extra data useful for clicking the notification
+        'applicantId': user.uid,
+        'applicantName': applicantName,
+      });
+    }
+    // =========================================================
 
     // D. Increment Counters
     batch.update(_firestore.collection('users').doc(user.uid), {
