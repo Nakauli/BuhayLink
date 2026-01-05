@@ -499,8 +499,9 @@ class _DashboardPageState extends State<DashboardPage> {
                 ? _repository.getMyPostsStream()
                 : _repository.getAllJobsStream(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting)
+              if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
+              }
 
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 return Center(
@@ -537,7 +538,7 @@ class _DashboardPageState extends State<DashboardPage> {
               }
 
               if (!_showMyPosts) {
-                if (_selectedFilter == "Urgent")
+                if (_selectedFilter == "Urgent") {
                   docs = docs
                       .where(
                         (doc) =>
@@ -545,7 +546,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             true,
                       )
                       .toList();
-                else if (_selectedFilter == "\$ High Pay")
+                } else if (_selectedFilter == "\$ High Pay") {
                   docs = docs
                       .where(
                         (doc) =>
@@ -555,7 +556,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             20000,
                       )
                       .toList();
-                else if (_selectedFilter == "Nearby")
+                } else if (_selectedFilter == "Nearby") {
                   docs = docs
                       .where(
                         (doc) =>
@@ -565,15 +566,17 @@ class _DashboardPageState extends State<DashboardPage> {
                                 .contains("santo tomas"),
                       )
                       .toList();
+                }
               }
 
-              if (docs.isEmpty)
+              if (docs.isEmpty) {
                 return Center(
                   child: Text(
                     "No matches found.",
                     style: TextStyle(color: Colors.grey[500]),
                   ),
                 );
+              }
 
               return ListView.separated(
                 padding: const EdgeInsets.symmetric(
@@ -628,7 +631,8 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _getBodyContent() {
     switch (_selectedIndex) {
       case 1:
-        return const SearchPage();
+        // --- FIX: Pass the isEmployerMode parameter ---
+        return SearchPage(isEmployerMode: _showMyPosts);
       case 2:
         return _showMyPosts
             ? const AddJobPage(showBackButton: false)
