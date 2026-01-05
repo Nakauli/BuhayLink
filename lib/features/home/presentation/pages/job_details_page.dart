@@ -2,7 +2,6 @@ import 'package:buhay_link/widgets/rate_user_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-// Ensure this path matches your project structure
 import '../../../jobs/data/repositories/job_repository.dart';
 import 'public_profile_page.dart';
 import 'job_applicants_page.dart';
@@ -15,7 +14,7 @@ class JobDetailsPage extends StatefulWidget {
 
   const JobDetailsPage({
     super.key,
-    required this.job, // kept as required but we prefer live data
+    required this.job,
     required this.jobId,
     this.isHired = false,
     this.isRejected = false,
@@ -30,8 +29,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
   bool _isApplying = false;
   bool _hasApplied = false;
   bool _isSaved = false;
-
-  // --- NEW: Track if already rated ---
   bool _hasRated = false;
 
   @override
@@ -47,27 +44,21 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     final applied = await _jobRepository.hasApplied(widget.jobId);
     final saved = await _jobRepository.isJobSaved(widget.jobId);
 
-    // --- CHECK IF ALREADY RATED ---
     bool rated = false;
     String targetId = "";
-
-    // Check against the initial data first (live updates handled in build)
     final String posterId =
         widget.job['posterId'] ?? widget.job['postedBy'] ?? "";
     final String hiredId = widget.job['hiredApplicantId'] ?? "";
 
     if (currentUser.uid == posterId) {
-      // I am Employer -> Check if I rated Worker
       targetId = hiredId;
     } else if (currentUser.uid == hiredId) {
-      // I am THE HIRED Worker -> Check if I rated Employer
       targetId = posterId;
     }
 
     if (targetId.isNotEmpty) {
       rated = await _jobRepository.hasUserRated(targetId, widget.jobId);
     }
-    // ------------------------------
 
     if (mounted) {
       setState(() {
@@ -78,7 +69,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     }
   }
 
-  // --- SMART MARK AS COMPLETE (Fixes "No ID" Error) ---
   Future<void> _markAsComplete(Map<String, dynamic> liveData) async {
     bool? confirm = await showDialog(
       context: context,
@@ -104,10 +94,8 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     );
 
     if (confirm == true) {
-      // 1. Try to get ID from live data
       String workerId = liveData['hiredApplicantId'] ?? "";
 
-      // 2. FALLBACK: If missing, find who is marked as 'hired' in subcollection
       if (workerId.isEmpty) {
         final snapshot = await FirebaseFirestore.instance
             .collection('jobs')
@@ -119,7 +107,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
 
         if (snapshot.docs.isNotEmpty) {
           workerId = snapshot.docs.first.id;
-          // Self-heal the database
           await _jobRepository.updateJob(widget.jobId, {
             'hiredApplicantId': workerId,
           });
@@ -128,9 +115,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
 
       if (workerId.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Error: No hired worker found in database."),
-          ),
+          const SnackBar(content: Text("Error: No hired worker found.")),
         );
         return;
       }
@@ -145,7 +130,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     }
   }
 
-  // --- RATING DIALOG ---
   void _showRatingDialog(Map<String, dynamic> liveData) {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
@@ -157,7 +141,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     String targetName = "User";
 
     if (currentUser.uid == employerId) {
-      // I am Employer -> Rate Worker
       if (workerId == null || workerId.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Error: No worker to rate found.")),
@@ -167,11 +150,9 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
       targetId = workerId;
       targetName = "the Worker";
     } else if (currentUser.uid == workerId) {
-      // I am THE HIRED Worker -> Rate Employer
       targetId = employerId;
       targetName = "the Employer";
     } else {
-      // I am a random user (Safety Check)
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("You are not authorized to rate this job."),
@@ -195,11 +176,9 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
             );
 
             if (mounted) {
-              // --- UPDATE UI IMMEDIATELY ---
               setState(() {
                 _hasRated = true;
               });
-
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text("You rated $targetName successfully!"),
@@ -208,13 +187,11 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
               );
             }
           } catch (e) {
-            // Handle duplicate error gracefully
             if (mounted) {
               String msg = e.toString().replaceAll("Exception: ", "");
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text(msg), backgroundColor: Colors.red),
               );
-              // If already rated, make sure UI reflects that
               if (msg.contains("already rated")) {
                 setState(() => _hasRated = true);
               }
@@ -257,15 +234,12 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     }
   }
 
-  // --- DELETE FUNCTION ---
   void _confirmDelete() {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text("Delete Job?"),
-        content: const Text(
-          "Are you sure you want to remove this job post? This cannot be undone.",
-        ),
+        content: const Text("Are you sure you want to remove this job post?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
@@ -289,8 +263,8 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     );
   }
 
-  // --- EDIT FUNCTION ---
   void _showEditDialog() {
+    // (Existing edit logic remains same)
     final titleCtrl = TextEditingController(text: widget.job['title']);
     final categoryCtrl = TextEditingController(
       text: widget.job['tag'] ?? widget.job['category'] ?? "",
@@ -404,28 +378,24 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. STREAM BUILDER: Listens for updates (This fixes the sync issues)
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('jobs')
           .doc(widget.jobId)
           .snapshots(),
       builder: (context, snapshot) {
-        // Loading
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        // Error / Deleted
         if (!snapshot.hasData || !snapshot.data!.exists) {
           return Scaffold(
             appBar: AppBar(leading: const BackButton()),
-            body: const Center(child: Text("Job not found or deleted.")),
+            body: const Center(child: Text("Job not found.")),
           );
         }
 
-        // Live Data
         final data = snapshot.data!.data() as Map<String, dynamic>;
 
         final currentUser = FirebaseAuth.instance.currentUser;
@@ -435,27 +405,26 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         final String status = data['status'] ?? 'open';
 
         return Scaffold(
-          backgroundColor: Colors.white,
-
-          // --- APP BAR ---
+          backgroundColor: Colors.white, // Keep background clean white
           appBar: AppBar(
             backgroundColor: Colors.white,
             elevation: 0,
+            scrolledUnderElevation: 0,
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.black),
+              icon: const Icon(Icons.arrow_back, color: Colors.black87),
               onPressed: () => Navigator.pop(context),
             ),
             title: const Text(
               "Job Details",
               style: TextStyle(
-                color: Colors.black,
+                color: Colors.black87,
                 fontWeight: FontWeight.bold,
               ),
             ),
             actions: [
               if (isOwner) ...[
                 IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.blue),
+                  icon: const Icon(Icons.edit_outlined, color: Colors.blue),
                   onPressed: _showEditDialog,
                 ),
                 IconButton(
@@ -466,14 +435,13 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                 IconButton(
                   icon: Icon(
                     _isSaved ? Icons.bookmark : Icons.bookmark_border,
-                    color: _isSaved ? const Color(0xFF2E7EFF) : Colors.black,
+                    color: _isSaved ? const Color(0xFF2E7EFF) : Colors.black87,
                   ),
                   onPressed: () => _toggleSaveJob(data),
                 ),
             ],
           ),
 
-          // --- STICKY BOTTOM ACTION BAR ---
           bottomNavigationBar: Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
@@ -493,15 +461,36 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
             ),
           ),
 
-          // --- MAIN SCROLLABLE CONTENT ---
           body: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 10),
+                // 1. MODERN HEADER (Title, Price, Tags)
+                const SizedBox(height: 12),
+                Text(
+                  data['title'] ?? "Job Title",
+                  style: const TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black87,
+                    height: 1.1,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  data['price'] ??
+                      "₱${data['budgetMin']} - ₱${data['budgetMax']}",
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2E7EFF),
+                  ),
+                ),
+                const SizedBox(height: 16),
 
-                // 1. STATUS BADGES & TAGS
+                // Badges Row
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -517,87 +506,50 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                         Colors.red.shade50,
                         Colors.red.shade700,
                       ),
-
                     if (status == 'completed')
-                      const Chip(
-                        label: Text(
-                          "Completed",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        backgroundColor: Colors.green,
-                        padding: EdgeInsets.zero,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      )
+                      _buildChip("Completed", Colors.green)
                     else if (status == 'hired')
-                      const Chip(
-                        label: Text(
-                          "Hired",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        backgroundColor: Colors.orange,
-                        padding: EdgeInsets.zero,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
+                      _buildChip("Hired", Colors.orange),
                   ],
                 ),
-                const SizedBox(height: 20),
 
-                // 2. TITLE & PRICE
-                Text(
-                  data['title'] ?? "Job Title",
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black,
-                    height: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  data['price'] ??
-                      "₱${data['budgetMin']} - ₱${data['budgetMax']}",
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2E7EFF),
-                  ),
-                ),
+                const SizedBox(height: 32),
 
-                const SizedBox(height: 24),
-
-                // 3. STATS GRID (Cleaner Look)
+                // 2. MODERN STATS LIST (Clean, Vertical)
                 Container(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.grey.shade100),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 24,
+                    horizontal: 20,
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  decoration: BoxDecoration(
+                    color: const Color(
+                      0xFFF8F9FE,
+                    ), // Very subtle grey-blue tint
+                    borderRadius: BorderRadius.circular(20),
+                    // Removed border for a cleaner look, keeps layout open
+                  ),
+                  child: Column(
                     children: [
-                      _buildStatItem(
-                        Icons.location_on,
+                      _buildStatItemRow(
+                        Icons.location_on_rounded,
                         "Location",
                         data['location'] ?? "Remote",
                       ),
-                      _buildVerticalDivider(),
-                      _buildStatItem(
-                        Icons.access_time_filled,
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16.0),
+                        child: Divider(height: 1, color: Colors.black12),
+                      ),
+                      _buildStatItemRow(
+                        Icons.access_time_filled_rounded,
                         "Duration",
                         data['duration'] ?? "N/A",
                       ),
-                      _buildVerticalDivider(),
-                      _buildStatItem(
-                        Icons.people,
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16.0),
+                        child: Divider(height: 1, color: Colors.black12),
+                      ),
+                      _buildStatItemRow(
+                        Icons.people_alt_rounded,
                         "Applicants",
                         "${data['applicants'] ?? 0}",
                       ),
@@ -607,26 +559,30 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
 
                 const SizedBox(height: 32),
 
-                // 4. DESCRIPTION
+                // 3. DESCRIPTION
                 const Text(
-                  "Job Description",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  "About the job",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   data['description'] ?? "No description provided.",
-                  style: TextStyle(
-                    color: Colors.grey[700],
+                  style: const TextStyle(
+                    color: Color(0xFF555555),
                     height: 1.6,
                     fontSize: 16,
                   ),
                 ),
 
                 const SizedBox(height: 32),
-                const Divider(),
+                const Divider(color: Colors.black12),
                 const SizedBox(height: 24),
 
-                // 5. EMPLOYER / POSTER CARD
+                // 4. EMPLOYER SECTION
                 if (!isOwner) _buildEmployerCard(data),
 
                 const SizedBox(height: 40),
@@ -638,7 +594,236 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     );
   }
 
-  // --- BUTTON BUILDERS (UPDATED TO DISABLE IF RATED) ---
+  // --- MODERN UI HELPERS ---
+
+  Widget _buildStatItemRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white, // White icon bg against grey container
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(icon, color: const Color(0xFF2E7EFF), size: 22),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: Colors.grey[500],
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: Colors.black87,
+                ),
+                maxLines: 10, // Allows address to flow nicely
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTag(String text, Color bg, Color textCol) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(30),
+      ), // Pill shape
+      child: Text(
+        text.toUpperCase(),
+        style: TextStyle(
+          color: textCol,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChip(String label, Color color) {
+    return Chip(
+      label: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      backgroundColor: color,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      side: BorderSide.none,
+      shape: const StadiumBorder(),
+    );
+  }
+
+  Widget _buildEmployerCard(Map<String, dynamic> jobData) {
+    final String userId = jobData['posterId'] ?? jobData['postedBy'] ?? "";
+    return StreamBuilder<DocumentSnapshot>(
+      stream: userId.isNotEmpty
+          ? FirebaseFirestore.instance
+                .collection('users')
+                .doc(userId)
+                .snapshots()
+          : null,
+      builder: (context, snapshot) {
+        String name = jobData['posterName'] ?? "Employer";
+        String? photoUrl;
+        double rating = 0.0;
+        int reviews = 0;
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final uData = snapshot.data!.data() as Map<String, dynamic>;
+          name = uData['fullName'] ?? uData['name'] ?? name;
+          photoUrl = uData['profileImage'] ?? uData['photoUrl'];
+          rating = (uData['rating'] ?? 0.0).toDouble();
+          reviews = uData['reviewCount'] ?? 0;
+        }
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 15,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: Colors.blue.shade50,
+                backgroundImage: photoUrl != null
+                    ? NetworkImage(photoUrl)
+                    : null,
+                child: photoUrl == null
+                    ? Text(
+                        name[0].toUpperCase(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                          color: Colors.blue,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Posted by",
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    ),
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                    if (reviews > 0)
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.star_rounded,
+                            color: Colors.amber,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            "$rating ",
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                          Text(
+                            "($reviews reviews)",
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  if (userId.isNotEmpty)
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            PublicProfilePage(userId: userId, userName: name),
+                      ),
+                    );
+                },
+                child: const Text("View Profile"),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // --- BUTTON LOGIC (Keep exact same functionality) ---
+  // (Standardized button style helper for consistent look)
+  ButtonStyle _actionButtonStyle(Color color) {
+    return ElevatedButton.styleFrom(
+      backgroundColor: color,
+      foregroundColor: Colors.white,
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0, // Flat modern look
+      textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+    );
+  }
+
+  Widget _buildDisabledButton(String text) {
+    return ElevatedButton.icon(
+      onPressed: null,
+      icon: const Icon(Icons.check_circle_outline, color: Colors.white),
+      label: Text(text, style: const TextStyle(color: Colors.white)),
+      style: ElevatedButton.styleFrom(
+        disabledBackgroundColor: Colors.grey[400], // Nicer disabled color
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 0,
+      ),
+    );
+  }
 
   Widget _buildOwnerActionButton(
     String status,
@@ -647,17 +832,13 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
   ) {
     if (status == 'open') {
       return ElevatedButton.icon(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => JobApplicantsPage(
-                jobId: widget.jobId,
-                jobTitle: data['title'],
-              ),
-            ),
-          );
-        },
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                JobApplicantsPage(jobId: widget.jobId, jobTitle: data['title']),
+          ),
+        ),
         icon: const Icon(Icons.people_alt_outlined),
         label: const Text("View Applicants"),
         style: _actionButtonStyle(const Color(0xFF2E7EFF)),
@@ -670,29 +851,10 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         style: _actionButtonStyle(Colors.green),
       );
     } else if (status == 'completed') {
-      // --- CHECK IF ALREADY RATED ---
-      if (_hasRated) {
-        return ElevatedButton.icon(
-          onPressed: null, // Disabled
-          icon: const Icon(Icons.check, color: Colors.grey),
-          label: const Text(
-            "You have rated this user",
-            style: TextStyle(color: Colors.grey),
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.grey[300],
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
-      }
-      // ------------------------------
+      if (_hasRated) return _buildDisabledButton("You rated this user");
       return ElevatedButton.icon(
         onPressed: () => _showRatingDialog(data),
-        icon: const Icon(Icons.star),
+        icon: const Icon(Icons.star_rounded),
         label: const Text("Rate Worker"),
         style: _actionButtonStyle(Colors.amber[800]!),
       );
@@ -706,48 +868,12 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     final hiredId = data['hiredApplicantId'] ?? "";
 
     if (status == 'completed') {
-      // --- SECURITY CHECK: ONLY HIRED WORKER CAN RATE ---
-      if (currentUid != hiredId) {
-        return ElevatedButton(
-          onPressed: null, // Disabled
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.grey[300],
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          child: const Text(
-            "Position Filled (Closed)",
-            style: TextStyle(color: Colors.grey),
-          ),
-        );
-      }
-
-      // --- CHECK IF ALREADY RATED ---
-      if (_hasRated) {
-        return ElevatedButton.icon(
-          onPressed: null, // Disabled
-          icon: const Icon(Icons.check, color: Colors.grey),
-          label: const Text(
-            "You have rated this user",
-            style: TextStyle(color: Colors.grey),
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.grey[300],
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
-      }
-      // ------------------------------
+      if (currentUid != hiredId)
+        return _buildDisabledButton("Position Filled (Closed)");
+      if (_hasRated) return _buildDisabledButton("You rated this user");
       return ElevatedButton.icon(
         onPressed: () => _showRatingDialog(data),
-        icon: const Icon(Icons.star),
+        icon: const Icon(Icons.star_rounded),
         label: const Text("Rate Employer"),
         style: _actionButtonStyle(Colors.amber[800]!),
       );
@@ -774,164 +900,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                   ? "Applied"
                   : (status == 'hired' ? "Position Filled" : "Apply Now"),
             ),
-    );
-  }
-
-  ButtonStyle _actionButtonStyle(Color color) {
-    return ElevatedButton.styleFrom(
-      backgroundColor: color,
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 0,
-      textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-    );
-  }
-
-  Widget _buildTag(String text, Color bg, Color textCol) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        text.toUpperCase(),
-        style: TextStyle(
-          color: textCol,
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatItem(IconData icon, String label, String value) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.grey[400], size: 22),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-          textAlign: TextAlign.center,
-          overflow: TextOverflow.ellipsis,
-        ),
-        Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-      ],
-    );
-  }
-
-  Widget _buildVerticalDivider() {
-    return Container(height: 30, width: 1, color: Colors.grey.shade300);
-  }
-
-  Widget _buildEmployerCard(Map<String, dynamic> jobData) {
-    final String userId = jobData['posterId'] ?? jobData['postedBy'] ?? "";
-
-    return StreamBuilder<DocumentSnapshot>(
-      stream: userId.isNotEmpty
-          ? FirebaseFirestore.instance
-                .collection('users')
-                .doc(userId)
-                .snapshots()
-          : null,
-      builder: (context, snapshot) {
-        String name = jobData['posterName'] ?? "Employer";
-        String? photoUrl;
-        double rating = 0.0;
-        int reviews = 0;
-
-        if (snapshot.hasData && snapshot.data!.exists) {
-          final uData = snapshot.data!.data() as Map<String, dynamic>;
-          name = uData['fullName'] ?? uData['name'] ?? name;
-          photoUrl = uData['profileImage'] ?? uData['photoUrl'];
-          rating = (uData['rating'] ?? 0.0).toDouble();
-          reviews = uData['reviewCount'] ?? 0;
-        }
-
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.02),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 26,
-                backgroundColor: Colors.blue.shade50,
-                backgroundImage: photoUrl != null
-                    ? NetworkImage(photoUrl)
-                    : null,
-                child: photoUrl == null
-                    ? Text(
-                        name[0].toUpperCase(),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue,
-                        ),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "Posted by",
-                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                    ),
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    if (reviews > 0)
-                      Row(
-                        children: [
-                          const Icon(Icons.star, color: Colors.amber, size: 14),
-                          const SizedBox(width: 4),
-                          Text(
-                            "$rating ($reviews reviews)",
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  if (userId.isNotEmpty) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            PublicProfilePage(userId: userId, userName: name),
-                      ),
-                    );
-                  }
-                },
-                child: const Text("View Profile"),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

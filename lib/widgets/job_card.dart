@@ -16,34 +16,80 @@ class JobCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIX: Check 'postedBy' (which is what your DB has) if 'posterId' is missing
+    // 1. DATA PREPARATION
     final String posterId = job['posterId'] ?? job['postedBy'] ?? "";
+    final String rawStatus = (job['status'] ?? "open").toString().toLowerCase();
 
-    final String status = (job['status'] ?? "Open").toString().toUpperCase();
-    final bool isClosed = status == 'CLOSED' || status == 'HIRED';
+    // Status Checks
+    final bool isOpen = rawStatus == 'open';
+    final bool isCompleted = rawStatus == 'completed';
+    // "Hired" means the job is now "Ongoing"
+    final bool isOngoing = rawStatus == 'hired';
+
+    // Applicant Count
+    final int applicantCount = job['applicants'] ?? 0;
+
+    // Visual Styles (Grey out if not open)
+    final Color backgroundColor = isOpen ? Colors.white : Colors.grey.shade50;
+    final Color titleColor = isOpen ? Colors.black : Colors.grey.shade600;
+    final Color priceColor = isOpen ? Colors.blue : Colors.grey.shade500;
+    final Color borderColor = isOpen
+        ? Colors.grey.shade100
+        : Colors.grey.shade300;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: backgroundColor,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withOpacity(isOpen ? 0.05 : 0.02),
               blurRadius: 15,
               offset: const Offset(0, 5),
             ),
           ],
-          border: Border.all(color: Colors.grey.shade100),
+          border: Border.all(color: borderColor),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header Row (Title and Urgent Tag)
-            _buildHeader(status, isClosed),
+            // --- HEADER (Title & Status Badge) ---
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    job['title'] ?? "",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 17,
+                      color: titleColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // --- NEW BADGE HIERARCHY ---
+                // 1. If Completed -> Green "COMPLETED"
+                if (isCompleted)
+                  _buildBadge("COMPLETED", Colors.green)
+                // 2. If Hired -> Orange "ONGOING" (Replaces Urgent)
+                else if (isOngoing)
+                  _buildBadge("ONGOING", Colors.orange.shade800)
+                // 3. If Open & Urgent -> Red "URGENT"
+                else if (job['isUrgent'] == true)
+                  _buildBadge("URGENT", Colors.red),
+              ],
+            ),
+
             const SizedBox(height: 8),
+
+            // Description
             Text(
               job['description'] ?? "",
               style: TextStyle(color: Colors.grey[600], fontSize: 13),
@@ -56,27 +102,29 @@ class JobCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.blue[50],
+                color: isOpen ? Colors.blue[50] : Colors.grey[200],
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                job['tag'] ?? "General",
+                (job['tag'] ?? "General").toString().toUpperCase(),
                 style: TextStyle(
-                  color: Colors.blue[700],
+                  color: isOpen ? Colors.blue[700] : Colors.grey[600],
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ),
+
             const SizedBox(height: 16),
             const Divider(height: 1),
             const SizedBox(height: 16),
 
-            // Info Items (Price, Location, etc.)
-            _buildInfoGrid(),
+            // Info Grid (Price | Location | Applicants)
+            _buildInfoGrid(priceColor, applicantCount),
+
             const SizedBox(height: 16),
 
-            // --- THE FIX: DYNAMIC USER PROFILE SECTION ---
+            // --- USER PROFILE SECTION ---
             StreamBuilder<DocumentSnapshot>(
               stream: posterId.isNotEmpty
                   ? FirebaseFirestore.instance
@@ -85,33 +133,29 @@ class JobCard extends StatelessWidget {
                         .snapshots()
                   : null,
               builder: (context, snapshot) {
-                // Default to what's on the job post
+                // Default data
                 String name = job['posterName'] ?? "Employer";
                 String? profileUrl;
+                String? rating;
 
                 if (snapshot.hasData && snapshot.data!.exists) {
                   final userData =
                       snapshot.data!.data() as Map<String, dynamic>;
-
-                  // FIXED: Check 'name' first (Matches ProfilePage)
                   name =
                       userData['name'] ??
                       userData['fullName'] ??
                       userData['firstName'] ??
                       name;
-
-                  // FIXED: Check 'photoUrl' first (Matches ProfilePage)
                   profileUrl =
                       userData['photoUrl'] ??
                       userData['profileImage'] ??
                       userData['imageUrl'];
-                }
 
-                // Fallback for current user's own posts
-                final currentUid = FirebaseAuth.instance.currentUser?.uid;
-                if (posterId == currentUid) {
-                  // Optional: You can change this to "Me" if you prefer
-                  // name = "Me";
+                  if (userData['rating'] != null) {
+                    rating = (userData['rating'] as num)
+                        .toDouble()
+                        .toStringAsFixed(1);
+                  }
                 }
 
                 return Row(
@@ -135,7 +179,6 @@ class JobCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      // added Expanded to prevent overflow
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -156,7 +199,7 @@ class JobCard extends StatelessWidget {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                job['rating']?.toString() ?? "New",
+                                rating ?? job['rating']?.toString() ?? "New",
                                 style: TextStyle(
                                   color: Colors.grey[600],
                                   fontSize: 11,
@@ -167,26 +210,6 @@ class JobCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    // Optional Status Badge (Already correctly implemented)
-                    if (showStatus)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isClosed ? Colors.grey[100] : Colors.green[50],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          status,
-                          style: TextStyle(
-                            color: isClosed ? Colors.grey : Colors.green,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
                   ],
                 );
               },
@@ -197,51 +220,57 @@ class JobCard extends StatelessWidget {
     );
   }
 
-  // --- Helper UI Methods ---
-  Widget _buildHeader(String status, bool isClosed) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: Text(
-            job['title'] ?? "",
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
-          ),
+  // --- Helper: Badge Builder ---
+  Widget _buildBadge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
         ),
-        if (job['isUrgent'] == true)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.red[50],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              "URGENT",
-              style: TextStyle(
-                color: Colors.red,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-      ],
+      ),
     );
   }
 
-  Widget _buildInfoGrid() {
+  // --- Helper: Info Grid ---
+  Widget _buildInfoGrid(Color priceColor, int applicants) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Expanded(
+        // 1. Price
+        Flexible(
+          flex: 2,
           child: _buildInfoItem(
             Icons.payments_outlined,
             job['price'] ?? "",
-            Colors.blue,
+            priceColor,
           ),
         ),
-        Expanded(
+
+        // 2. Location
+        Flexible(
+          flex: 2,
           child: _buildInfoItem(
             Icons.location_on_outlined,
-            job['location'] ?? "",
+            job['location'] ?? "Remote",
+            Colors.grey,
+          ),
+        ),
+
+        // 3. Applicants
+        Flexible(
+          flex: 2,
+          child: _buildInfoItem(
+            Icons.people_alt_outlined,
+            "$applicants Applied",
             Colors.grey,
           ),
         ),
@@ -251,14 +280,16 @@ class JobCard extends StatelessWidget {
 
   Widget _buildInfoItem(IconData icon, String label, Color iconColor) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 16, color: iconColor),
-        const SizedBox(width: 6),
+        const SizedBox(width: 4),
         Flexible(
           child: Text(
             label,
             style: const TextStyle(fontSize: 12, color: Colors.black87),
             overflow: TextOverflow.ellipsis,
+            maxLines: 1,
           ),
         ),
       ],
