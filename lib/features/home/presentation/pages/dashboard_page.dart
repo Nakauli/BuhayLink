@@ -516,6 +516,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
               var docs = snapshot.data!.docs;
               final currentUid = FirebaseAuth.instance.currentUser?.uid;
+
+              // Filter logic (Hide my own posts in 'Find Jobs' mode)
               if (!_showMyPosts && currentUid != null) {
                 docs = docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
@@ -593,7 +595,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   final Map<String, dynamic> jobMap = {
                     "jobId": jobId,
                     "title": data['title'] ?? "Untitled",
-                    "description": data['description'] ?? "",
+                    "description": data['description'] ?? "No description",
                     "tag": data['category'] ?? "General",
                     "price":
                         "₱${data['budgetMin'] ?? 0} - ₱${data['budgetMax'] ?? 0}",
@@ -604,11 +606,15 @@ class _DashboardPageState extends State<DashboardPage> {
                     "status": data['status'] ?? "open",
                     "posterId": data['postedBy'] ?? "",
                     "rating": data['posterRating']?.toString() ?? "New",
+                    "posterName": data['posterName'] ?? "Employer",
+                    "posterPhoto": data['posterPhoto'],
                   };
 
                   return JobCard(
                     job: jobMap,
-                    showStatus: _showMyPosts,
+                    // --- CHANGED HERE: Always show status for better UX ---
+                    showStatus: true,
+                    // ----------------------------------------------------
                     onTap: () {
                       Navigator.push(
                         context,
@@ -631,7 +637,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _getBodyContent() {
     switch (_selectedIndex) {
       case 1:
-        // --- FIX: Pass the isEmployerMode parameter ---
+        // Pass the isEmployerMode parameter
         return SearchPage(isEmployerMode: _showMyPosts);
       case 2:
         return _showMyPosts
