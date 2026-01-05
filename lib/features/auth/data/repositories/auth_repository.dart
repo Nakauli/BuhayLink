@@ -1,18 +1,24 @@
-import 'package:cloud_firestore/cloud_firestore.dart'; // Added for Database access
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../auth_service.dart';
 
 class AuthRepository {
   final AuthService _service = AuthService();
-  // 1. Add Firestore instance to save the profile
+  // 1. Firestore instance to save the profile
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  // 2. Added FirebaseAuth instance (Needed for Password Reset)
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // 2. Login (Unchanged)
+  // ---------------------------------------------------------
+  // EXISTING LOGIN (Unchanged)
+  // ---------------------------------------------------------
   Future<User?> signIn(String email, String password) async {
     return await _service.signIn(email: email, password: password);
   }
 
-  // 3. Register (UPDATED: Creates Database Profile Automatically)
+  // ---------------------------------------------------------
+  // EXISTING REGISTER (Unchanged)
+  // ---------------------------------------------------------
   Future<User?> signUp(String email, String password, String username) async {
     // A. Create the Account via Service
     User? user = await _service.signUp(
@@ -29,12 +35,30 @@ class AuthRepository {
     return user;
   }
 
-  // 4. Sign Out (Unchanged)
+  // ---------------------------------------------------------
+  // EXISTING SIGN OUT (Unchanged)
+  // ---------------------------------------------------------
   Future<void> signOut() async {
     await _service.signOut();
   }
 
-  // --- HELPER: Create Firestore Profile ---
+  // ---------------------------------------------------------
+  // NEW FUNCTION: FORGOT PASSWORD
+  // ---------------------------------------------------------
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+    } on FirebaseAuthException catch (e) {
+      // Handle specific Firebase errors (like user not found)
+      throw e.message ?? "An error occurred while sending reset email.";
+    } catch (e) {
+      throw e.toString();
+    }
+  }
+
+  // ---------------------------------------------------------
+  // HELPER: Create Firestore Profile (Unchanged)
+  // ---------------------------------------------------------
   Future<void> _createInitialProfile(
     User user,
     String rawUsername,

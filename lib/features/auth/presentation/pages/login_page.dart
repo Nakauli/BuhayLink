@@ -1,6 +1,7 @@
 import 'package:buhay_link/features/home/presentation/pages/dashboard_page.dart';
+import 'package:buhay_link/features/home/presentation/pages/forgot_password_page.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart'; // <--- NEW IMPORT FOR SVG
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../data/google_auth_service.dart';
 
@@ -218,16 +219,27 @@ class _LoginPageState extends State<LoginPage> {
 
                         const SizedBox(height: 12),
 
+                        // --- FORGOT PASSWORD BUTTON ---
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
-                            onPressed: () {},
+                            onPressed: () {
+                              // Navigate to Forgot Password Page
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const ForgotPasswordPage(),
+                                ),
+                              );
+                            },
                             child: const Text(
                               "Forgot Password?",
                               style: TextStyle(color: Color(0xFF2E7EFF)),
                             ),
                           ),
                         ),
+                        // -----------------------------
                       ] else ...[
                         _buildTextField(
                           _fullNameController,
@@ -312,7 +324,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       const SizedBox(height: 20),
 
-                      // --- GOOGLE BUTTON (UPDATED WITH LOGO) ---
+                      // --- GOOGLE BUTTON ---
                       OutlinedButton.icon(
                         onPressed: isLoading ? null : _handleGoogleSignIn,
                         style: OutlinedButton.styleFrom(
@@ -322,18 +334,13 @@ class _LoginPageState extends State<LoginPage> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           minimumSize: const Size(double.infinity, 50),
-                          backgroundColor:
-                              Colors.white, // White background for logo
+                          backgroundColor: Colors.white,
                         ),
-
-                        // --- HERE IS THE FIX ---
                         icon: SvgPicture.asset(
                           'assets/images/google_logo.svg',
                           height: 24,
                           width: 24,
                         ),
-
-                        // ----------------------
                         label: const Text(
                           "Google",
                           style: TextStyle(
