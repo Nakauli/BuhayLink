@@ -1,7 +1,8 @@
 import 'package:buhay_link/features/home/presentation/pages/dashboard_page.dart';
 import 'package:flutter/material.dart';
-// FIX: Import the Repository, NOT the Service
 import '../../data/repositories/auth_repository.dart';
+// --- NEW IMPORT ---
+import '../../data/google_auth_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -21,10 +22,11 @@ class _LoginPageState extends State<LoginPage> {
   bool isLogin = true;
   bool isLoading = false;
 
-  // FIX: Use AuthRepository (The Brain)
   final AuthRepository _authRepository = AuthRepository();
+  // --- NEW SERVICE INSTANCE ---
+  final GoogleAuthService _googleAuthService = GoogleAuthService();
 
-  // --- LOGIC ---
+  // --- LOGIC: EMAIL/PASSWORD ---
   void _submitForm() async {
     setState(() => isLoading = true);
 
@@ -36,7 +38,7 @@ class _LoginPageState extends State<LoginPage> {
           _passwordController.text.trim(),
         );
       } else {
-        // Register Logic (NOW USES THE REPOSITORY WITH PROFILE CREATION)
+        // Register Logic
         await _authRepository.signUp(
           _emailController.text.trim(),
           _passwordController.text.trim(),
@@ -45,12 +47,10 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       if (mounted) {
-        // 1. Show Success Message
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text("Success! Welcome.")));
 
-        // 2. Navigate to Dashboard
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const DashboardPage()),
@@ -60,6 +60,43 @@ class _LoginPageState extends State<LoginPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  // --- LOGIC: GOOGLE SIGN IN ---
+  void _handleGoogleSignIn() async {
+    setState(() => isLoading = true);
+
+    try {
+      final userCredential = await _googleAuthService.signInWithGoogle();
+
+      if (userCredential != null) {
+        // Success
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text("Welcome with Google!")));
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const DashboardPage()),
+          );
+        }
+      } else {
+        // Cancelled by user
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Google Sign-In cancelled")),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -278,8 +315,10 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       const SizedBox(height: 20),
 
+                      // --- GOOGLE BUTTON (CONNECTED) ---
                       OutlinedButton.icon(
-                        onPressed: () {},
+                        // Connect the button to the function
+                        onPressed: isLoading ? null : _handleGoogleSignIn,
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           side: BorderSide(color: Colors.grey.shade300),

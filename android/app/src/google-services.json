@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "532572269024",
+    "project_id": "buhaylink-2c0fb",
+    "storage_bucket": "buhaylink-2c0fb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:532572269024:android:74392b1da19dc9df4a2385",
+        "android_client_info": {
+          "package_name": "com.example.buhay_link"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "532572269024-c7bq6i3otbj49vq5eibkev8hief08c7c.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.buhay_link",
+            "certificate_hash": "86324eea372217e26d368235b265dda939267873"
+          }
+        },
+        {
+          "client_id": "532572269024-0a9u5tmr5nlr742cgqkp3basmanccbsh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCI9nix-LG8WhOYVq_cIKhS7zflXJfcUJo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "532572269024-0a9u5tmr5nlr742cgqkp3basmanccbsh.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

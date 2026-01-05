@@ -44,6 +44,7 @@ dependencies:
   intl: ^0.20.2
   firebase_storage: ^13.0.5
   http: ^1.6.0
+  google_sign_in: ^6.2.1  # <--- ADDED THIS FOR GOOGLE LOGIN
 
 dev_dependencies:
   flutter_test:
