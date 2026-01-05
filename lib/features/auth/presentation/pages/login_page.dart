@@ -1,7 +1,7 @@
 import 'package:buhay_link/features/home/presentation/pages/dashboard_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart'; // <--- NEW IMPORT FOR SVG
 import '../../data/repositories/auth_repository.dart';
-// --- NEW IMPORT ---
 import '../../data/google_auth_service.dart';
 
 class LoginPage extends StatefulWidget {
@@ -23,7 +23,6 @@ class _LoginPageState extends State<LoginPage> {
   bool isLoading = false;
 
   final AuthRepository _authRepository = AuthRepository();
-  // --- NEW SERVICE INSTANCE ---
   final GoogleAuthService _googleAuthService = GoogleAuthService();
 
   // --- LOGIC: EMAIL/PASSWORD ---
@@ -75,7 +74,6 @@ class _LoginPageState extends State<LoginPage> {
       final userCredential = await _googleAuthService.signInWithGoogle();
 
       if (userCredential != null) {
-        // Success
         if (mounted) {
           ScaffoldMessenger.of(
             context,
@@ -86,7 +84,6 @@ class _LoginPageState extends State<LoginPage> {
           );
         }
       } else {
-        // Cancelled by user
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Google Sign-In cancelled")),
@@ -315,9 +312,8 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       const SizedBox(height: 20),
 
-                      // --- GOOGLE BUTTON (CONNECTED) ---
+                      // --- GOOGLE BUTTON (UPDATED WITH LOGO) ---
                       OutlinedButton.icon(
-                        // Connect the button to the function
                         onPressed: isLoading ? null : _handleGoogleSignIn,
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -326,17 +322,24 @@ class _LoginPageState extends State<LoginPage> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           minimumSize: const Size(double.infinity, 50),
+                          backgroundColor:
+                              Colors.white, // White background for logo
                         ),
-                        icon: const Icon(
-                          Icons.g_mobiledata,
-                          size: 30,
-                          color: Colors.black,
+
+                        // --- HERE IS THE FIX ---
+                        icon: SvgPicture.asset(
+                          'assets/images/google_logo.svg',
+                          height: 24,
+                          width: 24,
                         ),
+
+                        // ----------------------
                         label: const Text(
                           "Google",
                           style: TextStyle(
                             color: Colors.black87,
                             fontWeight: FontWeight.bold,
+                            fontSize: 16,
                           ),
                         ),
                       ),
