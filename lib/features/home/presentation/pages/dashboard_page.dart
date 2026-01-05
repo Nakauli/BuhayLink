@@ -78,12 +78,10 @@ class _DashboardPageState extends State<DashboardPage> {
         showUnselectedLabels: true,
 
         // --- UPDATED: SIMPLE NAVIGATION ONLY ---
-        // (We removed the _markAsRead logic here because the Bell handles it now)
         onTap: (index) => setState(() => _selectedIndex = index),
 
-        // ---------------------------------------
         items: [
-          // 0. HOME TAB (Clean - No Badge)
+          // 0. HOME TAB
           const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
 
           // 1. SEARCH TAB
@@ -92,7 +90,7 @@ class _DashboardPageState extends State<DashboardPage> {
             label: "Search",
           ),
 
-          // 2. DYNAMIC TAB (Clean - No Badge)
+          // 2. DYNAMIC TAB
           BottomNavigationBarItem(
             icon: Icon(_showMyPosts ? Icons.add_circle : Icons.assignment),
             label: _showMyPosts ? "Post" : "Applied",
@@ -197,16 +195,13 @@ class _DashboardPageState extends State<DashboardPage> {
                     ],
                   ),
 
-                  // --- NOTIFICATION BELL (The only place with logic) ---
+                  // --- NOTIFICATION BELL ---
                   GestureDetector(
                     onTap: () {
-                      // 1. Mark as Read immediately when Bell is clicked
+                      // 1. Mark as Read logic
                       if (_showMyPosts) {
-                        // Employer Mode: Clear Applicant alerts
                         _markAsRead(['application']);
                       } else {
-                        // Seeker Mode: Clear New Jobs & Status alerts
-                        // (Make sure to include ALL spellings your DB uses)
                         _markAsRead([
                           'new_post',
                           'post',
@@ -217,7 +212,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         ]);
                       }
 
-                      // 2. Navigate to Notifications Page
+                      // 2. Navigate
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -232,7 +227,6 @@ class _DashboardPageState extends State<DashboardPage> {
                         color: Colors.white.withOpacity(0.2),
                         shape: BoxShape.circle,
                       ),
-                      // The Badge stays here
                       child: NotificationBadge(
                         icon: Icons.notifications,
                         color: Colors.white,
@@ -264,6 +258,7 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: 24),
 
               if (_showMyPosts)
+                // --- MY POSTS MODE (Employer) ---
                 StreamBuilder<QuerySnapshot>(
                   stream: _repository.getMyPostsStream(),
                   builder: (context, snapshot) {
@@ -316,22 +311,43 @@ class _DashboardPageState extends State<DashboardPage> {
                             ),
                           ),
                         ),
-                        StatCard(
-                          value: "4.5",
-                          label: "Ratings",
-                          icon: Icons.star_rounded,
-                          onTap: uid != null
-                              ? () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => PublicProfilePage(
-                                      userId: uid,
-                                      userName: "Me",
-                                    ),
-                                  ),
-                                )
-                              : null,
+
+                        // --- FIXED: Real Rating Data for "My Posts" ---
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: _repository.getUserStatsStream(),
+                          builder: (context, userSnapshot) {
+                            String rating = "0.0";
+                            if (userSnapshot.hasData &&
+                                userSnapshot.data!.exists) {
+                              final userData =
+                                  userSnapshot.data!.data()
+                                      as Map<String, dynamic>?;
+                              double r = (userData?['rating'] is num)
+                                  ? (userData?['rating'] as num).toDouble()
+                                  : 0.0;
+                              rating = r.toStringAsFixed(1);
+                            }
+
+                            return StatCard(
+                              value: rating,
+                              label: "Ratings",
+                              icon: Icons.star_rounded,
+                              onTap: uid != null
+                                  ? () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => PublicProfilePage(
+                                          userId: uid,
+                                          userName: "Me",
+                                        ),
+                                      ),
+                                    )
+                                  : null,
+                            );
+                          },
                         ),
+
+                        // ---------------------------------------------
                         StatCard(
                           value: total.toString(),
                           label: "Total Posts",
@@ -351,14 +367,26 @@ class _DashboardPageState extends State<DashboardPage> {
                   },
                 )
               else
+                // --- FIND JOBS MODE (Worker) ---
                 StreamBuilder<DocumentSnapshot>(
                   stream: _repository.getUserStatsStream(),
                   builder: (context, snapshot) {
                     final data = snapshot.data?.data() as Map<String, dynamic>?;
+
                     final String appliedCount =
                         data?['appliedCount']?.toString() ?? "0";
+
                     final String savedCount =
                         data?['savedCount']?.toString() ?? "0";
+
+                    // --- FIXED: Fetch 'hiredCompleted' for real data ---
+                    final String hiredCount =
+                        data?['hiredCompleted']?.toString() ?? "0";
+
+                    // --- FIXED: Safe Rating Parse ---
+                    double rating = (data?['rating'] is num)
+                        ? (data?['rating'] as num).toDouble()
+                        : 0.0;
 
                     return Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -375,7 +403,7 @@ class _DashboardPageState extends State<DashboardPage> {
                           ),
                         ),
                         StatCard(
-                          value: "0",
+                          value: hiredCount,
                           label: "Hired",
                           icon: Icons.check_circle_outline,
                           onTap: () => Navigator.push(
@@ -386,9 +414,20 @@ class _DashboardPageState extends State<DashboardPage> {
                           ),
                         ),
                         StatCard(
-                          value: data?['rating']?.toString() ?? "0.0",
+                          value: rating.toStringAsFixed(1),
                           label: "Ratings",
                           icon: Icons.star_rounded,
+                          onTap: uid != null
+                              ? () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => PublicProfilePage(
+                                      userId: uid,
+                                      userName: "Me",
+                                    ),
+                                  ),
+                                )
+                              : null,
                         ),
                         StatCard(
                           value: savedCount,
@@ -564,7 +603,6 @@ class _DashboardPageState extends State<DashboardPage> {
                     "rating": data['posterRating']?.toString() ?? "New",
                   };
 
-                  // SOLID: Reusable Widget (Using only one call)
                   return JobCard(
                     job: jobMap,
                     showStatus: _showMyPosts,

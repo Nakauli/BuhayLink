@@ -7,7 +7,7 @@ import 'job_details_page.dart';
 class MyPostedJobsPage extends StatelessWidget {
   final String title;
   final List<String> statusFilter;
-  final JobRepository _jobRepository = JobRepository(); // Logic for database
+  final JobRepository _jobRepository = JobRepository();
 
   MyPostedJobsPage({
     super.key,
@@ -16,24 +16,34 @@ class MyPostedJobsPage extends StatelessWidget {
   });
 
   // --- 1. DELETE FUNCTION ---
-  void _confirmDelete(BuildContext context, String jobId) {
+  void _confirmDelete(BuildContext parentContext, String jobId) {
     showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
+      context: parentContext,
+      builder: (dialogContext) => AlertDialog(
+        // 1. Rename this to 'dialogContext'
         title: const Text("Delete Job?"),
         content: const Text(
           "Are you sure you want to remove this job post? This cannot be undone.",
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () =>
+                Navigator.pop(dialogContext), // Use dialogContext to close
             child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
           ),
           TextButton(
             onPressed: () async {
-              Navigator.pop(context); // Close dialog
+              // 1. Close the dialog immediately
+              Navigator.pop(dialogContext);
+
+              // 2. Perform the async operation
               await _jobRepository.deleteJob(jobId);
-              ScaffoldMessenger.of(context).showSnackBar(
+
+              // 3. CHECK MOUNTED: Ensure the *Parent Page* is still on screen
+              if (!parentContext.mounted) return;
+
+              // 4. Use 'parentContext' (The Page) for the SnackBar, NOT the dialog
+              ScaffoldMessenger.of(parentContext).showSnackBar(
                 const SnackBar(content: Text("Job deleted successfully")),
               );
             },
@@ -50,7 +60,6 @@ class MyPostedJobsPage extends StatelessWidget {
     String jobId,
     Map<String, dynamic> currentData,
   ) {
-    // Controllers to hold the text
     final titleCtrl = TextEditingController(text: currentData['title']);
     final descCtrl = TextEditingController(text: currentData['description']);
     final minBudgetCtrl = TextEditingController(
@@ -112,7 +121,6 @@ class MyPostedJobsPage extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: () async {
-              // Save logic
               Navigator.pop(context);
               await _jobRepository.updateJob(jobId, {
                 'title': titleCtrl.text,
@@ -160,7 +168,21 @@ class MyPostedJobsPage extends StatelessWidget {
                 if (snapshot.connectionState == ConnectionState.waiting)
                   return const Center(child: CircularProgressIndicator());
 
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                if (!snapshot.hasData) {
+                  return const Center(child: Text("No jobs found"));
+                }
+
+                // --- FIX: Filter Client Side to avoid Index Errors ---
+                final allDocs = snapshot.data!.docs;
+                final filteredDocs = allDocs.where((doc) {
+                  if (statusFilter.isEmpty) return true;
+                  final data = doc.data() as Map<String, dynamic>;
+                  // Check if the job status matches one of the filters
+                  return statusFilter.contains(data['status']);
+                }).toList();
+                // ----------------------------------------------------
+
+                if (filteredDocs.isEmpty) {
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -182,10 +204,10 @@ class MyPostedJobsPage extends StatelessWidget {
 
                 return ListView.separated(
                   padding: const EdgeInsets.all(16),
-                  itemCount: snapshot.data!.docs.length,
+                  itemCount: filteredDocs.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
-                    final doc = snapshot.data!.docs[index];
+                    final doc = filteredDocs[index];
                     final data = doc.data() as Map<String, dynamic>;
                     final String jobId = doc.id;
 
@@ -197,18 +219,13 @@ class MyPostedJobsPage extends StatelessWidget {
     );
   }
 
-  // Helper to build the query based on filters
+  // --- FIX: Get ALL jobs for this user, we filter in the builder above ---
   Stream<QuerySnapshot> _getJobStream(String uid) {
-    Query query = FirebaseFirestore.instance
+    return FirebaseFirestore.instance
         .collection('jobs')
         .where('postedBy', isEqualTo: uid)
-        .orderBy('postedAt', descending: true);
-
-    if (statusFilter.isNotEmpty) {
-      query = query.where('status', whereIn: statusFilter);
-    }
-
-    return query.snapshots();
+        .orderBy('postedAt', descending: true)
+        .snapshots();
   }
 
   Widget _buildMyJobCard(
@@ -227,17 +244,23 @@ class MyPostedJobsPage extends StatelessWidget {
           "location": data['location'],
           "user": data['posterName'],
           "posterId": data['postedBy'],
+          "hiredApplicantId": data['hiredApplicantId'], // Pass this for rating
           "rating": "Me",
           "applicants": "${data['applicants'] ?? 0} applicants",
           "duration": data['duration'] ?? "N/A",
           "isUrgent": data['isUrgent'] ?? false,
           "description": data['description'] ?? "",
+          "status": data['status'], // Pass status
         };
 
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => JobDetailsPage(job: jobMap, jobId: jobId),
+            builder: (context) => JobDetailsPage(
+              job: jobMap,
+              jobId: jobId,
+              isHired: data['status'] == 'hired',
+            ),
           ),
         );
       },

@@ -66,7 +66,8 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("You hired $applicantName!")));
-        Navigator.pop(context); // Go back to dashboard
+        // We DO NOT pop here anymore, so you can see the button change to "Hired" immediately
+        setState(() {});
       }
     }
   }
@@ -95,8 +96,7 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
         leading: const BackButton(color: Colors.black),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // FIX 1: Simplified Query to avoid Index Errors
-        // We just get everyone sorted by time, and filter rejected ones below.
+        // FIX 1: Simplified Query
         stream: FirebaseFirestore.instance
             .collection('jobs')
             .doc(widget.jobId)
@@ -132,7 +132,6 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
           }
 
           // FIX 2: Manual Filtering
-          // We filter out 'rejected' users here in the code instead of the database
           final docs = snapshot.data!.docs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
             return data['status'] != 'rejected';
@@ -158,14 +157,19 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
 
               // Safe Data Handling
               String name = data['name'] ?? "Unknown";
-              // REMOVED: String email = data['email'] ?? "No email"; (This fixed the warning)
               String photoUrl = data['photoUrl'] ?? "";
               Timestamp? appliedAt = data['appliedAt'];
+
+              // --- FIX 3: Check Status ---
+              String status = data['status'] ?? 'pending';
+              bool isHired = status == 'hired';
 
               // --- 4. SWIPE TO REJECT WRAPPER ---
               return Dismissible(
                 key: Key(applicantId),
-                direction: DismissDirection.endToStart,
+                direction: isHired
+                    ? DismissDirection.none
+                    : DismissDirection.endToStart, // Cannot reject if hired
                 background: Container(
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 20),
@@ -219,9 +223,15 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isHired
+                          ? Colors.green.shade50
+                          : Colors.white, // Highlight if hired
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade200),
+                      border: Border.all(
+                        color: isHired
+                            ? Colors.green.shade200
+                            : Colors.grey.shade200,
+                      ),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withOpacity(0.05),
@@ -282,27 +292,58 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                             ],
                           ),
                         ),
-                        ElevatedButton(
-                          onPressed: () => _hireApplicant(applicantId, name),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            shape: RoundedRectangleBorder(
+
+                        // --- FIX 4: SHOW HIRED BADGE OR HIRE BUTTON ---
+                        if (isHired)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
                               borderRadius: BorderRadius.circular(20),
                             ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 10,
+                            child: const Row(
+                              children: [
+                                Icon(
+                                  Icons.check,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  "Hired",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
-                            elevation: 0,
-                          ),
-                          child: const Text(
-                            "Hire",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
+                          )
+                        else
+                          ElevatedButton(
+                            onPressed: () => _hireApplicant(applicantId, name),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 10,
+                              ),
+                              elevation: 0,
+                            ),
+                            child: const Text(
+                              "Hire",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ),

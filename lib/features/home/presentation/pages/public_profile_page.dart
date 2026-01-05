@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 // SOLID: Import Repositories
 import '../../../jobs/data/repositories/job_repository.dart';
-import '../../../jobs/data/repositories/chat_repository.dart'; // Ensure you have this file created
-import 'hired_jobs_page.dart'; // Ensure this file exists
+import '../../../jobs/data/repositories/chat_repository.dart';
+import 'hired_jobs_page.dart';
 
 class PublicProfilePage extends StatefulWidget {
   final String userId;
@@ -52,9 +52,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     setState(() => _isLoading = true);
     try {
       await _jobRepository.hireApplicant(
-        widget.jobId!, // 1. Job ID
-        widget.userId, // 2. Applicant ID
-        widget.jobTitle ?? '', // 3. Title
+        widget.jobId!,
+        widget.userId,
+        widget.jobTitle ?? '',
       );
 
       setState(() => _decisionStatus = 'hired');
@@ -68,18 +68,18 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
         );
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- REJECT LOGIC (Fixed) ---
+  // --- REJECT LOGIC ---
   Future<void> _handleReject() async {
-    // 1. Confirmation Dialog
     bool? confirm = await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -104,13 +104,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 
     setState(() => _isLoading = true);
     try {
-      // 2. Call Repository (FIXED ARGUMENT ORDER)
-      await _jobRepository.rejectApplicant(
-        widget.jobId!, // Job ID First!
-        widget.userId, // Applicant ID Second!
-      );
+      await _jobRepository.rejectApplicant(widget.jobId!, widget.userId);
 
-      // 3. Update UI instantly
       setState(() => _decisionStatus = 'rejected');
 
       if (mounted) {
@@ -119,10 +114,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
         ).showSnackBar(const SnackBar(content: Text("Applicant Rejected.")));
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -147,49 +143,54 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
       body: StreamBuilder<DocumentSnapshot>(
         stream: _jobRepository.getUserProfileStream(widget.userId),
         builder: (context, snapshot) {
-          if (!snapshot.hasData)
+          if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
+          }
 
           final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
 
-          // --- ROBUST DATA FETCHING ---
-
-          // 1. Name: Check 'name', then 'fullName', then 'firstName'
+          // --- DATA FETCHING ---
           final String name =
               data['name'] ??
               data['fullName'] ??
               data['firstName'] ??
               widget.userName;
 
-          // 2. Photo: Check 'photoUrl', then 'profileImage', then 'imageUrl'
           final String photoUrl =
               data['photoUrl'] ??
               data['profileImage'] ??
               data['imageUrl'] ??
               "";
 
-          // 3. Location: Check 'location', then 'address'
           final String location =
               data['location'] ?? data['address'] ?? "Philippines";
 
-          // 4. About: Check 'about', then 'bio', then 'description'
           final String about =
               data['about'] ??
               data['bio'] ??
               data['description'] ??
               "No about info provided.";
 
-          // 5. Skills: Ensure it's a list
+          // --- SKILLS ---
           List<dynamic> skills = [];
           if (data['skills'] is List) {
             skills = data['skills'];
           }
 
+          // --- RATING DATA (FIXED) ---
+          // Safely convert any number type (int or double) to double
+          double rating = (data['rating'] is num)
+              ? (data['rating'] as num).toDouble()
+              : 0.0;
+
+          int reviewCount = (data['reviewCount'] is num)
+              ? (data['reviewCount'] as num).toInt()
+              : 0;
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-                // Pass the correctly fetched photoUrl here
                 _buildAvatar(name, photoUrl),
 
                 const SizedBox(height: 16),
@@ -200,29 +201,53 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                Text(
-                  location, // Using the fetched location
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
+                Text(location, style: TextStyle(color: Colors.grey[600])),
 
+                // --- ADDED: VISUAL STAR RATING ROW ---
+                const SizedBox(height: 8),
+                if (reviewCount > 0)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.star, color: Colors.amber, size: 20),
+                      const SizedBox(width: 4),
+                      Text(
+                        rating.toStringAsFixed(1),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        "($reviewCount reviews)",
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    "No ratings yet",
+                    style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                  ),
+
+                // -------------------------------------
                 const SizedBox(height: 24),
                 _buildTrustBadges(),
 
                 const SizedBox(height: 32),
-                _buildStatsRow(data),
+                _buildStatsRow(data, rating), // Pass the fixed rating
 
                 const SizedBox(height: 32),
                 const Divider(),
                 const SizedBox(height: 24),
 
-                // Using the fetched about text
                 _buildAboutSection(about),
 
                 const SizedBox(height: 24),
 
-                // --- NEW: SKILLS SECTION ---
                 if (skills.isNotEmpty) ...[
-                  Align(
+                  const Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
                       "Skills",
@@ -249,9 +274,13 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                   const SizedBox(height: 40),
                 ],
 
-                // ... (Rest of your buttons logic) ...
-                // --- DECISION BUTTONS ---
-                // Shows Hire/Reject ONLY if we came from a Job context AND no decision exists
+                // --- INSERTED REVIEWS LIST HERE ---
+                const Divider(),
+                const SizedBox(height: 24),
+                _buildReviewsList(),
+                const SizedBox(height: 40),
+
+                // ----------------------------------
                 if (_decisionStatus != null)
                   _buildDecisionBanner()
                 else if (widget.jobId != null)
@@ -259,13 +288,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 
                 const SizedBox(height: 16),
 
-                // --- CONTACT BUTTON ---
                 SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: OutlinedButton.icon(
                     onPressed: () {
-                      // FIX: Pass 4 arguments (Context, ID, Name, Current User Name)
                       _chatRepository.startChat(
                         context,
                         widget.userId,
@@ -337,7 +364,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     );
   }
 
-  Widget _buildStatsRow(Map<String, dynamic> data) {
+  // Updated to accept the parsed rating double
+  Widget _buildStatsRow(Map<String, dynamic> data, double rating) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
@@ -347,7 +375,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
           "Hired",
           isClickable: true,
         ),
-        _buildStatItem(data['rating']?.toString() ?? "0.0", "Rating"),
+        // Format rating to 1 decimal place (e.g. "4.5")
+        _buildStatItem(rating.toStringAsFixed(1), "Rating"),
       ],
     );
   }
@@ -380,7 +409,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 
   Widget _buildAboutSection(String bio) {
     return Align(
-      // Aligns text to start properly
       alignment: Alignment.centerLeft,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -393,6 +421,184 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
           Text(bio, style: const TextStyle(height: 1.5, color: Colors.black87)),
         ],
       ),
+    );
+  }
+
+  // --- NEW: REVIEWS LIST WIDGET ---
+  Widget _buildReviewsList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Recent Reviews",
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 16),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(widget.userId)
+              .collection('ratings')
+              .orderBy('timestamp', descending: true)
+              .limit(5) // Show last 5 reviews
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) return const Text("Could not load reviews.");
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final docs = snapshot.data?.docs ?? [];
+            if (docs.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.rate_review_outlined, color: Colors.grey[400]),
+                    const SizedBox(width: 12),
+                    Text(
+                      "No reviews yet.",
+                      style: TextStyle(color: Colors.grey[500]),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return Column(
+              children: docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final double rating = (data['rating'] ?? 0.0).toDouble();
+                final String review = data['review'] ?? "";
+                final String raterName = data['raterName'] ?? "Anonymous";
+                final String raterPhoto = data['raterPhoto'] ?? "";
+                final Timestamp? time = data['timestamp'];
+
+                // Format Date
+                String dateStr = "";
+                if (time != null) {
+                  final dt = time.toDate();
+                  dateStr = "${dt.month}/${dt.day}/${dt.year}";
+                }
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.grey.shade200),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.03),
+                        blurRadius: 5,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header: Avatar, Name, Date
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 16,
+                            backgroundImage: raterPhoto.isNotEmpty
+                                ? NetworkImage(raterPhoto)
+                                : null,
+                            child: raterPhoto.isEmpty
+                                ? Text(
+                                    raterName.isNotEmpty
+                                        ? raterName[0].toUpperCase()
+                                        : "U",
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  raterName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                Text(
+                                  dateStr,
+                                  style: TextStyle(
+                                    color: Colors.grey[500],
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Star Display
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.amber[50],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.star,
+                                  size: 14,
+                                  color: Colors.amber,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  rating.toStringAsFixed(1),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.amber[900],
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      // Review Text
+                      if (review.isNotEmpty)
+                        Text(
+                          review,
+                          style: TextStyle(
+                            color: Colors.grey[800],
+                            height: 1.4,
+                          ),
+                        )
+                      else
+                        Text(
+                          "No written review.",
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontStyle: FontStyle.italic,
+                            fontSize: 12,
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -426,7 +632,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
         children: [
           Expanded(
             child: OutlinedButton(
-              onPressed: _isLoading ? null : _handleReject, // Uses new handler
+              onPressed: _isLoading ? null : _handleReject,
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: Colors.red),
                 foregroundColor: Colors.red,

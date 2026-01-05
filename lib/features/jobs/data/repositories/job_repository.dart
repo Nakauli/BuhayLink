@@ -4,7 +4,113 @@ import '../datasources/firebase_job_service.dart';
 import '../models/job_model.dart';
 
 class JobRepository {
-  // 1. Dependencies (This defines _firestore so the functions can use it)
+  // --- RATING SYSTEM ---
+
+  // 1. Add a Rating & Update Average (Updated with Duplicate Check)
+  Future<void> rateUser({
+    required String targetUserId,
+    required double rating,
+    required String review,
+    required String jobId,
+  }) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    // --- CHECK FOR DUPLICATES FIRST ---
+    // This prevents the user from submitting twice even if the UI lags
+    bool alreadyRated = await hasUserRated(targetUserId, jobId);
+    if (alreadyRated) {
+      throw Exception("You have already rated this user for this job.");
+    }
+    // ---------------------------------
+
+    // 1. Get Rater's Info (Name/Photo)
+    String raterName = currentUser.displayName ?? "User";
+    String raterPhoto = currentUser.photoURL ?? "";
+
+    final raterDoc = await _firestore
+        .collection('users')
+        .doc(currentUser.uid)
+        .get();
+    if (raterDoc.exists) {
+      final data = raterDoc.data();
+      if (data != null) {
+        raterName = data['fullName'] ?? raterName;
+        raterPhoto = data['profileImage'] ?? raterPhoto;
+      }
+    }
+
+    WriteBatch batch = _firestore.batch();
+
+    // 2. Add Review
+    DocumentReference ratingRef = _firestore
+        .collection('users')
+        .doc(targetUserId)
+        .collection('ratings')
+        .doc();
+
+    batch.set(ratingRef, {
+      'raterId': currentUser.uid,
+      'raterName': raterName,
+      'raterPhoto': raterPhoto,
+      'rating': rating,
+      'review': review,
+      'jobId': jobId,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
+
+    // 5. Calculate New Average
+    await _recalculateAverage(targetUserId);
+  }
+
+  // --- CHECK IF ALREADY RATED (Existing) ---
+  Future<bool> hasUserRated(String targetUserId, String jobId) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return false;
+
+    try {
+      final query = await _firestore
+          .collection('users')
+          .doc(targetUserId)
+          .collection('ratings')
+          .where('jobId', isEqualTo: jobId)
+          .where('raterId', isEqualTo: uid)
+          .limit(1)
+          .get();
+
+      return query.docs.isNotEmpty;
+    } catch (e) {
+      print("Error checking rating status: $e");
+      return false;
+    }
+  }
+
+  // Helper: Recalculate Average
+  Future<void> _recalculateAverage(String userId) async {
+    final snapshots = await _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('ratings')
+        .get();
+
+    if (snapshots.docs.isEmpty) return;
+
+    double total = 0;
+    for (var doc in snapshots.docs) {
+      total += (doc.data()['rating'] ?? 0.0) as double;
+    }
+
+    double newAverage = total / snapshots.docs.length;
+
+    await _firestore.collection('users').doc(userId).update({
+      'rating': newAverage,
+      'reviewCount': snapshots.docs.length,
+    });
+  }
+
+  // 1. Dependencies
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
   final FirebaseJobService _service;
@@ -28,7 +134,6 @@ class JobRepository {
   }
 
   // --- JOB POSTING & APPLICATIONS ---
-
   Stream<QuerySnapshot> getApplicationsStream() {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return const Stream.empty();
@@ -40,7 +145,6 @@ class JobRepository {
         .snapshots();
   }
 
-  // --- HELPER: Capitalize First Letter ---
   String _capitalize(String input) {
     if (input.isEmpty) return input;
     return input[0].toUpperCase() + input.substring(1);
@@ -59,44 +163,34 @@ class JobRepository {
     final user = _auth.currentUser;
     if (user == null) throw Exception("User not logged in");
 
-    // 1. DEFAULT: Grab name from Email or Auth Display Name immediately
-    //    Example: "mannypacman@gmail.com" -> "mannypacman"
     String rawName =
         user.displayName ?? user.email?.split('@')[0] ?? "Employer";
     String posterPhoto = user.photoURL ?? "";
 
-    // 2. CHECK DATABASE: If a custom profile exists, prefer that data
     try {
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       if (userDoc.exists) {
         final data = userDoc.data();
         if (data != null) {
-          // Check for custom name
           final dbName =
               data['name'] ??
               data['fullName'] ??
               data['firstName'] ??
               data['username'];
-          if (dbName != null && dbName.toString().isNotEmpty) {
-            rawName = dbName;
-          }
-          // Check for custom photo
+          if (dbName != null && dbName.toString().isNotEmpty) rawName = dbName;
+
           final dbPhoto =
               data['photoUrl'] ?? data['profileImage'] ?? data['imageUrl'];
-          if (dbPhoto != null && dbPhoto.toString().isNotEmpty) {
+          if (dbPhoto != null && dbPhoto.toString().isNotEmpty)
             posterPhoto = dbPhoto;
-          }
         }
       }
     } catch (e) {
       print("Error fetching profile: $e");
     }
 
-    // 3. CAPITALIZE: Ensure the first letter is uppercase
-    //    Example: "mannypacman" -> "Mannypacman"
     String finalPosterName = _capitalize(rawName);
 
-    // 4. SAVE JOB with the Capitalized Name
     DocumentReference jobRef = await _firestore.collection('jobs').add({
       'title': title,
       'description': description,
@@ -106,11 +200,9 @@ class JobRepository {
       'location': location,
       'duration': duration,
       'isUrgent': isUrgent,
-
       'postedBy': user.uid,
-      'posterName': finalPosterName, // <--- SAVING "Mannypacman"
+      'posterName': finalPosterName,
       'posterPhoto': posterPhoto,
-
       'posterRating': 0.0,
       'applicants': 0,
       'postedAt': FieldValue.serverTimestamp(),
@@ -131,19 +223,15 @@ class JobRepository {
 
   // --- CORE FEATURES: APPLY, HIRE, REJECT ---
 
-  // 1. APPLY FOR JOB (Fixed Notification Logic)
   Future<void> applyForJob(String jobId, Map<String, dynamic> jobData) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception("User not logged in");
 
-    // Get the Employer ID (Handle both naming conventions)
     final String employerId = jobData['posterId'] ?? jobData['postedBy'] ?? "";
-
     String applicantName =
         user.displayName ?? user.email?.split('@')[0] ?? "Applicant";
     String photoUrl = user.photoURL ?? "";
 
-    // Fetch latest name/photo from DB
     try {
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       if (userDoc.exists) {
@@ -159,7 +247,6 @@ class JobRepository {
 
     WriteBatch batch = _firestore.batch();
 
-    // A. Add to Job's 'applicants' subcollection
     DocumentReference jobApplicantRef = _firestore
         .collection('jobs')
         .doc(jobId)
@@ -174,7 +261,6 @@ class JobRepository {
       'status': 'pending',
     });
 
-    // B. Add to User's 'applications' subcollection
     DocumentReference userAppRef = _firestore
         .collection('users')
         .doc(user.uid)
@@ -189,30 +275,22 @@ class JobRepository {
       'employerId': employerId,
     });
 
-    // =========================================================
-    // C. Notification for Employer (UPDATED & FIXED)
-    // =========================================================
-    // Only send if the Employer exists and IT IS NOT ME (Prevent self-notification)
     if (employerId.isNotEmpty && employerId != user.uid) {
       DocumentReference notifRef = _firestore.collection('notifications').doc();
       batch.set(notifRef, {
-        'type': 'application', // <--- EXACT SPELLING REQUIRED
-        'recipientId': employerId, // Send to Employer
-        'posterId': user.uid, // <--- "Who sent it?" (The Applicant)
+        'type': 'application',
+        'recipientId': employerId,
+        'posterId': user.uid,
         'jobId': jobId,
         'title': 'New Applicant',
         'body': "$applicantName applied for: ${jobData['title']}",
-        'read': false, // <--- Triggers the Red Dot
+        'read': false,
         'timestamp': FieldValue.serverTimestamp(),
-
-        // Extra data useful for clicking the notification
         'applicantId': user.uid,
         'applicantName': applicantName,
       });
     }
-    // =========================================================
 
-    // D. Increment Counters
     batch.update(_firestore.collection('users').doc(user.uid), {
       'appliedCount': FieldValue.increment(1),
     });
@@ -223,7 +301,6 @@ class JobRepository {
     await batch.commit();
   }
 
-  // 2. HIRE APPLICANT (Fixed: Accepts 3 arguments)
   Future<void> hireApplicant(
     String jobId,
     String applicantId,
@@ -234,13 +311,11 @@ class JobRepository {
 
     WriteBatch batch = _firestore.batch();
 
-    // A. Mark Job as Hired
     batch.update(_firestore.collection('jobs').doc(jobId), {
       'status': 'hired',
       'hiredApplicantId': applicantId,
     });
 
-    // B. Mark Applicant as Hired in the Job List
     batch.update(
       _firestore
           .collection('jobs')
@@ -250,7 +325,6 @@ class JobRepository {
       {'status': 'hired'},
     );
 
-    // C. Update Applicant's Personal List
     DocumentReference userAppRef = _firestore
         .collection('users')
         .doc(applicantId)
@@ -258,12 +332,10 @@ class JobRepository {
         .doc(jobId);
     batch.update(userAppRef, {'status': 'Hired'});
 
-    // D. Increment Stats
     batch.update(_firestore.collection('users').doc(applicantId), {
       'hiredCompleted': FieldValue.increment(1),
     });
 
-    // E. Send Notification
     DocumentReference notifRef = _firestore.collection('notifications').doc();
     batch.set(notifRef, {
       'recipientId': applicantId,
@@ -278,7 +350,6 @@ class JobRepository {
     await batch.commit();
   }
 
-  // 3. REJECT APPLICANT
   Future<void> rejectApplicant(String jobId, String applicantId) async {
     await _firestore
         .collection('jobs')
@@ -296,6 +367,47 @@ class JobRepository {
       'timestamp': FieldValue.serverTimestamp(),
       'read': false,
     });
+  }
+
+  // --- MARK JOB COMPLETE ---
+  Future<void> markJobComplete(String jobId, String workerId) async {
+    WriteBatch batch = _firestore.batch();
+
+    batch.update(_firestore.collection('jobs').doc(jobId), {
+      'status': 'completed',
+    });
+
+    batch.update(
+      _firestore
+          .collection('jobs')
+          .doc(jobId)
+          .collection('applicants')
+          .doc(workerId),
+      {'status': 'completed'},
+    );
+
+    batch.update(
+      _firestore
+          .collection('users')
+          .doc(workerId)
+          .collection('applications')
+          .doc(jobId),
+      {'status': 'Completed'},
+    );
+
+    DocumentReference notifRef = _firestore.collection('notifications').doc();
+    batch.set(notifRef, {
+      'recipientId': workerId,
+      'title': 'Job Completed',
+      'message':
+          'The employer has marked the job as completed. You can now leave a rating.',
+      'type': 'completed',
+      'jobId': jobId,
+      'timestamp': FieldValue.serverTimestamp(),
+      'read': false,
+    });
+
+    await batch.commit();
   }
 
   // --- HELPERS (Save, Sync, Withdraw) ---
@@ -381,21 +493,17 @@ class JobRepository {
     await batch.commit();
   }
 
-  // --- SYNC HELPER (This fixes the 'Applied Jobs' error) ---
   Future<void> syncApplicationCount() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;
-
     final query = await _firestore
         .collection('users')
         .doc(uid)
         .collection('applications')
         .count()
         .get();
-    final int actualCount = query.count ?? 0;
-
     await _firestore.collection('users').doc(uid).set({
-      'appliedCount': actualCount,
+      'appliedCount': query.count ?? 0,
     }, SetOptions(merge: true));
   }
 
@@ -415,10 +523,8 @@ class JobRepository {
     }
   }
 
-  // --- CHECK EXISTING DECISION (Restored & Upgraded) ---
   Future<String?> checkExistingDecision(String jobId, String userId) async {
     try {
-      // We check the specific applicant document inside the job
       final doc = await _firestore
           .collection('jobs')
           .doc(jobId)
@@ -428,12 +534,8 @@ class JobRepository {
 
       if (doc.exists && doc.data() != null) {
         final data = doc.data() as Map<String, dynamic>;
-        // If status is 'hired' or 'rejected', return it.
-        // If it's 'pending', we return null so the buttons still show.
         final status = data['status'];
-        if (status == 'hired' || status == 'rejected') {
-          return status;
-        }
+        if (status == 'hired' || status == 'rejected') return status;
       }
       return null;
     } catch (e) {
