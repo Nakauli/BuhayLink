@@ -264,7 +264,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
   }
 
   void _showEditDialog() {
-    // (Existing edit logic remains same)
     final titleCtrl = TextEditingController(text: widget.job['title']);
     final categoryCtrl = TextEditingController(
       text: widget.job['tag'] ?? widget.job['category'] ?? "",
@@ -405,7 +404,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         final String status = data['status'] ?? 'open';
 
         return Scaffold(
-          backgroundColor: Colors.white, // Keep background clean white
+          backgroundColor: Colors.white,
           appBar: AppBar(
             backgroundColor: Colors.white,
             elevation: 0,
@@ -466,31 +465,39 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. MODERN HEADER (Title, Price, Tags)
-                const SizedBox(height: 12),
+                // 1. HEADER SECTION (Modern Hierarchy)
+                const SizedBox(height: 10),
+
+                // Title
                 Text(
                   data['title'] ?? "Job Title",
                   style: const TextStyle(
-                    fontSize: 30,
+                    fontSize: 28,
                     fontWeight: FontWeight.w900,
                     color: Colors.black87,
-                    height: 1.1,
-                    letterSpacing: -0.5,
+                    height: 1.2,
                   ),
                 ),
+
                 const SizedBox(height: 8),
-                Text(
-                  data['price'] ??
-                      "₱${data['budgetMin']} - ₱${data['budgetMax']}",
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2E7EFF),
+
+                // Price (Use FittedBox to prevent overflow on small screens)
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    data['price'] ??
+                        "₱${data['budgetMin']} - ₱${data['budgetMax']}",
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2E7EFF),
+                    ),
                   ),
                 ),
+
                 const SizedBox(height: 16),
 
-                // Badges Row
+                // Badges
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -515,18 +522,15 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
 
                 const SizedBox(height: 32),
 
-                // 2. MODERN STATS LIST (Clean, Vertical)
+                // 2. MODERN VERTICAL STATS (Solves Address Overflow)
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    vertical: 24,
+                    vertical: 20,
                     horizontal: 20,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(
-                      0xFFF8F9FE,
-                    ), // Very subtle grey-blue tint
+                    color: const Color(0xFFF8F9FE), // Subtle bluish-grey bg
                     borderRadius: BorderRadius.circular(20),
-                    // Removed border for a cleaner look, keeps layout open
                   ),
                   child: Column(
                     children: [
@@ -582,7 +586,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                 const Divider(color: Colors.black12),
                 const SizedBox(height: 24),
 
-                // 4. EMPLOYER SECTION
+                // 4. EMPLOYER CARD
                 if (!isOwner) _buildEmployerCard(data),
 
                 const SizedBox(height: 40),
@@ -600,10 +604,11 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Modern Icon Box
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white, // White icon bg against grey container
+            color: Colors.white,
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
@@ -616,6 +621,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
           child: Icon(icon, color: const Color(0xFF2E7EFF), size: 22),
         ),
         const SizedBox(width: 16),
+        // Text Column (Wrapped in Expanded to fix overflow)
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -636,7 +642,8 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                   fontSize: 16,
                   color: Colors.black87,
                 ),
-                maxLines: 10, // Allows address to flow nicely
+                // This allows the address to wrap to multiple lines
+                maxLines: 10,
               ),
             ],
           ),
@@ -651,7 +658,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(30),
-      ), // Pill shape
+      ),
       child: Text(
         text.toUpperCase(),
         style: TextStyle(
@@ -798,15 +805,14 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     );
   }
 
-  // --- BUTTON LOGIC (Keep exact same functionality) ---
-  // (Standardized button style helper for consistent look)
+  // --- BUTTON LOGIC ---
   ButtonStyle _actionButtonStyle(Color color) {
     return ElevatedButton.styleFrom(
       backgroundColor: color,
       foregroundColor: Colors.white,
       padding: const EdgeInsets.symmetric(vertical: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 0, // Flat modern look
+      elevation: 0,
       textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
     );
   }
@@ -817,7 +823,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
       icon: const Icon(Icons.check_circle_outline, color: Colors.white),
       label: Text(text, style: const TextStyle(color: Colors.white)),
       style: ElevatedButton.styleFrom(
-        disabledBackgroundColor: Colors.grey[400], // Nicer disabled color
+        disabledBackgroundColor: Colors.grey[400],
         padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         elevation: 0,
