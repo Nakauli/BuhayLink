@@ -43,7 +43,7 @@ class JobPullingApp extends StatelessWidget {
             // 2. Loading State
             if (snapshot.connectionState == ConnectionState.waiting) {
               print("⏳ DEBUG: Still waiting for Firebase...");
-              return const SplashPage();
+              return const SplashScreen();
             }
 
             // 3. User Found

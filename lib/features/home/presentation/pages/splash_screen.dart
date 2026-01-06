@@ -1,8 +1,8 @@
 import 'package:buhay_link/features/home/presentation/pages/dashboard_page.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:buhay_link/features/auth/presentation/pages/login_page.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:buhay_link/features/auth/presentation/pages/login_page.dart'; // Adjust if needed
+import 'package:firebase_auth/firebase_auth.dart'; // Needed for Auth Check
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -42,7 +42,7 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    // Bounce effect
+    // FIX: Use Curves.easeOutBack instead of backOut
     _blScale = Tween<double>(begin: 0.5, end: 1.0).animate(
       CurvedAnimation(
         parent: _entranceController,
@@ -87,6 +87,7 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkAuthAndNavigate() async {
+    // Simple check: If user is logged in -> Dashboard, else -> Login
     final user = FirebaseAuth.instance.currentUser;
     Widget nextScreen = (user != null)
         ? const DashboardPage()
@@ -122,7 +123,7 @@ class _SplashScreenState extends State<SplashScreen>
           children: [
             // --- LOGO COMPOSITION (Stack) ---
             SizedBox(
-              width: 250,
+              width: 250, // Adjust size based on your assets
               height: 250,
               child: Stack(
                 alignment: Alignment.center,
@@ -132,25 +133,19 @@ class _SplashScreenState extends State<SplashScreen>
                     scale: _blScale,
                     child: FadeTransition(
                       opacity: _blFade,
-                      child: Image.asset(
-                        'assets/images/logo_bl.png', // FIXED PATH
-                        width: 200,
-                      ),
+                      child: Image.asset('assets/logo_bl.png', width: 200),
                     ),
                   ),
 
-                  // 2. Spinning Gear
+                  // 2. Spinning Gear (Positioned inside the BL nook)
                   Positioned(
-                    right: 60, // Adjust this number if gear is not centered
-                    bottom: 60, // Adjust this number if gear is not centered
+                    right: 60, // Adjust to fit perfectly
+                    bottom: 60, // Adjust to fit perfectly
                     child: FadeTransition(
                       opacity: _gearFade,
                       child: RotationTransition(
                         turns: _gearController,
-                        child: Image.asset(
-                          'assets/images/logo_gear.png', // FIXED PATH
-                          width: 70,
-                        ),
+                        child: Image.asset('assets/logo_gear.png', width: 70),
                       ),
                     ),
                   ),
@@ -165,10 +160,7 @@ class _SplashScreenState extends State<SplashScreen>
               position: _textSlide,
               child: FadeTransition(
                 opacity: _textFade,
-                child: Image.asset(
-                  'assets/images/logo_text.png', // FIXED PATH
-                  width: 280,
-                ),
+                child: Image.asset('assets/logo_text.png', width: 280),
               ),
             ),
           ],
