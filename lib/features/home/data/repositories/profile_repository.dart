@@ -105,4 +105,14 @@ class ProfileRepository {
   Future<void> signOut() async {
     await _auth.signOut();
   }
+
+  Future<void> saveResume(Map<String, dynamic> resumeData) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    await FirebaseFirestore.instance.collection('users').doc(uid).update({
+      'resume': resumeData,
+      'hasResume': true, // Flag to easily check if they have one
+    });
+  }
 }
