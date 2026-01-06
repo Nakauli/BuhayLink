@@ -43,7 +43,7 @@ class AuthRepository {
   }
 
   // ---------------------------------------------------------
-  // NEW FUNCTION: FORGOT PASSWORD
+  // EXISTING FUNCTION: FORGOT PASSWORD (Unchanged)
   // ---------------------------------------------------------
   Future<void> sendPasswordResetEmail(String email) async {
     try {
@@ -57,7 +57,7 @@ class AuthRepository {
   }
 
   // ---------------------------------------------------------
-  // HELPER: Create Firestore Profile (Unchanged)
+  // HELPER: Create Firestore Profile (UPDATED)
   // ---------------------------------------------------------
   Future<void> _createInitialProfile(
     User user,
@@ -84,11 +84,17 @@ class AuthRepository {
         'name': finalName, // Saved as Capitalized
         'username': rawUsername, // Original username
         'photoUrl': "", // Ready for later
-        'bio': "I'm new here!", // Default Bio
+        'about': "I'm new here!", // Updated key to match Profile Page
         'location': "Philippines", // Default Location
         'createdAt': FieldValue.serverTimestamp(),
 
+        // --- NEW FIELDS FOR UPDATED FEATURES ---
+        'isVerified': false, // Verification Logic
+        'hasResume': false, // Resume Logic
+        'skills': [], // Skills Logic
         // Initialize Counters so stats don't crash
+        'rating': 0.0,
+        'reviewCount': 0,
         'savedCount': 0,
         'appliedCount': 0,
         'hiredCompleted': 0,

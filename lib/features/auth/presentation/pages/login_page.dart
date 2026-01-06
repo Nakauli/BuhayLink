@@ -2,6 +2,8 @@ import 'package:buhay_link/features/home/presentation/pages/dashboard_page.dart'
 import 'package:buhay_link/features/home/presentation/pages/forgot_password_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Ensure this is imported
+import 'package:cloud_firestore/cloud_firestore.dart'; // Added for Database Sync
 import '../../data/repositories/auth_repository.dart';
 import '../../data/google_auth_service.dart';
 
@@ -25,6 +27,34 @@ class _LoginPageState extends State<LoginPage> {
 
   final AuthRepository _authRepository = AuthRepository();
   final GoogleAuthService _googleAuthService = GoogleAuthService();
+
+  // --- NEW: SYNC GOOGLE DATA TO FIRESTORE ---
+  Future<void> _syncGoogleUserToFirestore(User user) async {
+    final userDoc = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid);
+    final snapshot = await userDoc.get();
+
+    // Only create a new document if one doesn't exist
+    if (!snapshot.exists) {
+      await userDoc.set({
+        'uid': user.uid,
+        'email': user.email,
+        'name': user.displayName ?? "User", // Use Google Name
+        'photoUrl': user.photoURL ?? "", // Use Google Photo
+        'createdAt': FieldValue.serverTimestamp(),
+        'isVerified': false,
+        'hasResume': false,
+        'rating': 0.0,
+        'reviewCount': 0,
+        'appliedCount': 0,
+        'hiredCompleted': 0,
+        'about': 'No bio available.',
+        'location': 'Philippines',
+        'skills': [],
+      });
+    }
+  }
 
   // --- LOGIC: EMAIL/PASSWORD ---
   void _submitForm() async {
@@ -67,14 +97,17 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // --- LOGIC: GOOGLE SIGN IN ---
+  // --- LOGIC: GOOGLE SIGN IN (UPDATED) ---
   void _handleGoogleSignIn() async {
     setState(() => isLoading = true);
 
     try {
       final userCredential = await _googleAuthService.signInWithGoogle();
 
-      if (userCredential != null) {
+      if (userCredential != null && userCredential.user != null) {
+        // --- FIX: Sync Data to Firestore immediately ---
+        await _syncGoogleUserToFirestore(userCredential.user!);
+
         if (mounted) {
           ScaffoldMessenger.of(
             context,
