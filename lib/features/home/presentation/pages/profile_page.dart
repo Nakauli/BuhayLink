@@ -51,7 +51,7 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  // --- NEW: PERMISSION RECOVERY DIALOG ---
+  // --- PERMISSION RECOVERY DIALOG ---
   void _showPermissionDialog(String feature) {
     showDialog(
       context: context,
@@ -74,7 +74,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // --- IMAGE PICKER LOGIC (UPDATED FOR UX) ---
+  // --- IMAGE PICKER LOGIC ---
   Future<void> _pickAndUploadImage() async {
     showModalBottomSheet(
       context: context,
@@ -92,7 +92,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   );
                   if (image != null) _uploadFile(File(image.path));
                 } catch (e) {
-                  // If gallery is denied, show the helpful dialog
                   _showPermissionDialog("Photo Library");
                 }
               },
@@ -108,7 +107,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   );
                   if (image != null) _uploadFile(File(image.path));
                 } catch (e) {
-                  // If camera is denied (even permanently), show the helpful dialog
                   _showPermissionDialog("Camera");
                 }
               },
@@ -594,46 +592,6 @@ class _ProfilePageState extends State<ProfilePage> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.green.shade400,
-                            Colors.green.shade700,
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.green.withOpacity(0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.verified, color: Colors.white, size: 16),
-                          SizedBox(width: 4),
-                          Text(
-                            "Verified Member",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
                       ),
                     ),
                   ],
