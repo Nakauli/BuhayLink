@@ -742,6 +742,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                     : null,
               ),
               const SizedBox(width: 16),
+              // --- FIXED: WRAPPED IN EXPANDED AND ADDED OVERFLOW HANDLING ---
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -752,6 +753,8 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                     ),
                     Text(
                       name,
+                      maxLines: 1, // Fix: Prevent name from breaking layout
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
@@ -773,11 +776,15 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                               fontSize: 13,
                             ),
                           ),
-                          Text(
-                            "($reviews reviews)",
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey,
+                          // Fix: Wrap reviews in Flexible for small screens
+                          Flexible(
+                            child: Text(
+                              "($reviews reviews)",
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey,
+                              ),
                             ),
                           ),
                         ],
