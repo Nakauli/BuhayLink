@@ -2,14 +2,17 @@ import 'package:buhay_link/features/jobs/data/repositories/chat_repository.dart'
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-// SOLID: Import the Repository
-
+import 'package:intl/intl.dart'; // Add intl: ^0.18.0 to pubspec.yaml if not present
 
 class ChatDetailPage extends StatefulWidget {
   final String receiverId;
   final String receiverName;
 
-  const ChatDetailPage({super.key, required this.receiverId, required this.receiverName});
+  const ChatDetailPage({
+    super.key,
+    required this.receiverId,
+    required this.receiverName,
+  });
 
   @override
   State<ChatDetailPage> createState() => _ChatDetailPageState();
@@ -21,6 +24,9 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   final String _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? "";
   final ScrollController _scrollController = ScrollController();
 
+  // State to track which message ID is currently showing its timestamp
+  String? _tappedMessageId;
+
   String get _chatRoomId {
     List<String> ids = [_currentUserId, widget.receiverId];
     ids.sort();
@@ -29,7 +35,11 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
 
   void _handleSendMessage() {
     if (_messageController.text.trim().isNotEmpty) {
-      _chatRepository.sendMessage(_chatRoomId, widget.receiverId, _messageController.text);
+      _chatRepository.sendMessage(
+        _chatRoomId,
+        widget.receiverId,
+        _messageController.text,
+      );
       _messageController.clear();
       _scrollToBottom();
     }
@@ -39,8 +49,8 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         0, // List is reversed, so 0 is the bottom
-        duration: const Duration(milliseconds: 300), 
-        curve: Curves.easeOut
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
       );
     }
   }
@@ -59,15 +69,30 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildAttachmentOption(Icons.image, "Gallery", Colors.blue),
                 _buildAttachmentOption(Icons.camera_alt, "Camera", Colors.pink),
-                _buildAttachmentOption(Icons.description, "File", Colors.orange),
-                _buildAttachmentOption(Icons.location_on, "Location", Colors.green),
+                _buildAttachmentOption(
+                  Icons.description,
+                  "File",
+                  Colors.orange,
+                ),
+                _buildAttachmentOption(
+                  Icons.location_on,
+                  "Location",
+                  Colors.green,
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -81,17 +106,25 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     return InkWell(
       onTap: () {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label feature coming soon!")));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("$label feature coming soon!")));
       },
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
             child: Icon(icon, color: color, size: 28),
           ),
           const SizedBox(height: 8),
-          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          ),
         ],
       ),
     );
@@ -109,29 +142,50 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
             child: StreamBuilder<QuerySnapshot>(
               stream: _chatRepository.getMessagesStream(_chatRoomId),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
                 final messages = snapshot.data!.docs;
 
                 return ListView.builder(
                   controller: _scrollController,
                   reverse: true, // Newest messages at the bottom
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 20,
+                  ),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
-                    final data = messages[index].data() as Map<String, dynamic>;
+                    final doc = messages[index];
+                    final data = doc.data() as Map<String, dynamic>;
                     bool isMe = data['senderId'] == _currentUserId;
-                    
+
                     // Logic to hide avatar if consecutive messages from same user
                     bool showAvatar = !isMe;
                     if (index > 0) {
-                      final prevData = messages[index - 1].data() as Map<String, dynamic>;
+                      final prevData =
+                          messages[index - 1].data() as Map<String, dynamic>;
                       if (prevData['senderId'] == data['senderId']) {
                         showAvatar = false;
                       }
                     }
 
-                    return _buildMessageBubble(data['text'] ?? "", isMe, showAvatar);
+                    // Extract Timestamp
+                    Timestamp? time = data['timestamp'];
+                    String formattedTime = "";
+                    if (time != null) {
+                      final dt = time.toDate();
+                      formattedTime = DateFormat('h:mm a').format(dt);
+                    }
+
+                    return _buildMessageBubble(
+                      doc.id, // Pass ID for tracking clicks
+                      data['text'] ?? "",
+                      isMe,
+                      showAvatar,
+                      formattedTime,
+                    );
                   },
                 );
               },
@@ -155,122 +209,241 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       leading: const BackButton(color: Colors.black),
       titleSpacing: 0,
       title: StreamBuilder<DocumentSnapshot>(
-        // SOLID: Using Repository for status stream
-        stream: _chatRepository.getUserStatusStream(widget.receiverId),
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.receiverId)
+            .snapshots(),
         builder: (context, snapshot) {
           String name = widget.receiverName;
+          String photoUrl = "";
+          bool isVerified = false;
           bool isOnline = false;
 
           if (snapshot.hasData && snapshot.data!.exists) {
             final data = snapshot.data!.data() as Map<String, dynamic>;
-            name = data['fullName'] ?? data['firstName'] ?? name;
-            // The logic: if 'isOnline' field exists and is true, show green
-            isOnline = data['isOnline'] ?? false; 
+            name = data['name'] ?? data['fullName'] ?? name;
+            photoUrl = data['photoUrl'] ?? "";
+            isVerified = data['isVerified'] == true;
+            isOnline = data['isOnline'] ?? false;
           }
 
           return Row(
             children: [
+              // Avatar
               Stack(
                 children: [
                   CircleAvatar(
                     radius: 20,
                     backgroundColor: Colors.blue.shade100,
-                    child: Text(name.isNotEmpty ? name[0].toUpperCase() : "?", style: TextStyle(color: Colors.blue.shade800, fontWeight: FontWeight.bold)),
+                    backgroundImage: photoUrl.isNotEmpty
+                        ? NetworkImage(photoUrl)
+                        : null,
+                    child: photoUrl.isEmpty
+                        ? Text(
+                            name.isNotEmpty ? name[0].toUpperCase() : "?",
+                            style: TextStyle(
+                              color: Colors.blue.shade800,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        : null,
                   ),
-                  // FEATURE: Green Circle
                   if (isOnline)
                     Positioned(
                       right: 0,
                       bottom: 0,
                       child: Container(
-                        width: 12, height: 12,
+                        width: 12,
+                        height: 12,
                         decoration: BoxDecoration(
                           color: Colors.green,
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2)
+                          border: Border.all(color: Colors.white, width: 2),
                         ),
                       ),
-                    )
+                    ),
                 ],
               ),
               const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, style: const TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.bold)),
-                  Text(isOnline ? "Active now" : "Offline", style: TextStyle(color: isOnline ? Colors.green : Colors.grey, fontSize: 12, fontWeight: FontWeight.w400)),
-                ],
+
+              // Info Column (Expanded Fix applied here)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            name,
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow:
+                                TextOverflow.ellipsis, // Prevents overflow
+                            maxLines: 1,
+                          ),
+                        ),
+                        if (isVerified) ...[
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.verified,
+                            color: Colors.green,
+                            size: 14,
+                          ),
+                        ],
+                      ],
+                    ),
+                    Text(
+                      isOnline ? "Active now" : "Offline",
+                      style: TextStyle(
+                        color: isOnline ? Colors.green : Colors.grey,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
             ],
           );
         },
       ),
       actions: [
-        // FEATURE: Call Buttons
         IconButton(
-          icon: const Icon(Icons.call, color: Color(0xFF2E7EFF)), 
-          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Voice Call coming soon!")))
+          icon: const Icon(Icons.call, color: Color(0xFF2E7EFF)),
+          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Voice Call coming soon!")),
+          ),
         ),
         IconButton(
-          icon: const Icon(Icons.videocam, color: Color(0xFF2E7EFF)), 
-          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Video Call coming soon!")))
+          icon: const Icon(Icons.videocam, color: Color(0xFF2E7EFF)),
+          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Video Call coming soon!")),
+          ),
         ),
         IconButton(
-          icon: const Icon(Icons.info_outline, color: Colors.black54), 
-          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Chat Info")))
+          icon: const Icon(Icons.info_outline, color: Colors.black54),
+          onPressed: () => ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text("Chat Info"))),
         ),
       ],
     );
   }
 
-  Widget _buildMessageBubble(String message, bool isMe, bool showAvatar) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 4, top: showAvatar ? 8 : 0),
-      child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (!isMe) ...[
-            if (showAvatar)
-              CircleAvatar(
-                radius: 14,
-                backgroundColor: Colors.grey[300],
-                child: Text(widget.receiverName.isNotEmpty ? widget.receiverName[0].toUpperCase() : "?", style: const TextStyle(fontSize: 10, color: Colors.black54)),
-              )
-            else
-              const SizedBox(width: 28), // Spacer
-            const SizedBox(width: 8),
-          ],
+  Widget _buildMessageBubble(
+    String msgId,
+    String message,
+    bool isMe,
+    bool showAvatar,
+    String time,
+  ) {
+    bool isTapped = _tappedMessageId == msgId;
 
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                // Gradient for me, White for them
-                gradient: isMe 
-                  ? const LinearGradient(colors: [Color(0xFF2E7EFF), Color(0xFF0052CC)]) 
-                  : null,
-                color: isMe ? null : Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(20),
-                  topRight: const Radius.circular(20),
-                  bottomLeft: Radius.circular(isMe ? 20 : 4),
-                  bottomRight: Radius.circular(isMe ? 4 : 20),
-                ),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          // Toggle timestamp visibility
+          _tappedMessageId = isTapped ? null : msgId;
+        });
+      },
+      child: Column(
+        crossAxisAlignment: isMe
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(bottom: 4, top: showAvatar ? 8 : 0),
+            child: Row(
+              mainAxisAlignment: isMe
+                  ? MainAxisAlignment.end
+                  : MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (!isMe) ...[
+                  if (showAvatar)
+                    CircleAvatar(
+                      radius: 14,
+                      backgroundColor: Colors.grey[300],
+                      child: Text(
+                        widget.receiverName.isNotEmpty
+                            ? widget.receiverName[0].toUpperCase()
+                            : "?",
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 28), // Spacer
+                  const SizedBox(width: 8),
                 ],
+
+                Flexible(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      // Gradient for me, White for them
+                      gradient: isMe
+                          ? const LinearGradient(
+                              colors: [Color(0xFF2E7EFF), Color(0xFF0052CC)],
+                            )
+                          : null,
+                      color: isMe ? null : Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(20),
+                        topRight: const Radius.circular(20),
+                        bottomLeft: Radius.circular(isMe ? 20 : 4),
+                        bottomRight: Radius.circular(isMe ? 4 : 20),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 5,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      message,
+                      style: TextStyle(
+                        color: isMe ? Colors.white : Colors.black87,
+                        fontSize: 15,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // --- TIMESTAMP (Shown only if clicked) ---
+          if (isTapped)
+            Padding(
+              padding: EdgeInsets.only(
+                left: isMe ? 0 : 44, // Align with bubble start
+                right: isMe ? 0 : 0,
+                bottom: 8,
               ),
               child: Text(
-                message,
+                time,
                 style: TextStyle(
-                  color: isMe ? Colors.white : Colors.black87,
-                  fontSize: 15,
-                  height: 1.3
+                  color: Colors.grey[500],
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -281,15 +454,25 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
+          ),
+        ],
       ),
       child: SafeArea(
         child: Row(
           children: [
             // FEATURE: Plus Button (Attachments)
             IconButton(
-              icon: const Icon(Icons.add_circle, color: Color(0xFF2E7EFF), size: 30), 
-              onPressed: _showAttachmentOptions
+              icon: const Icon(
+                Icons.add_circle,
+                color: Color(0xFF2E7EFF),
+                size: 30,
+              ),
+              onPressed: _showAttachmentOptions,
             ),
             Expanded(
               child: Container(
@@ -317,7 +500,11 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                   color: Color(0xFF2E7EFF),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                child: const Icon(
+                  Icons.send_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
             ),
           ],
