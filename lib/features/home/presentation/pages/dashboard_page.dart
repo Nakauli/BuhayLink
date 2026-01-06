@@ -27,6 +27,20 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  // 1. Initialize Repository
+  final _repository = DashboardRepository();
+
+  int _selectedIndex = 0;
+  bool _showMyPosts = false;
+  String _selectedFilter = "All";
+  String _searchQuery = "";
+
+  // -----------------------------------------------------------
+  // FIX: Navigation History Stack
+  // This remembers where you were: [0, 1, 3] (Home -> Search -> Messages)
+  // -----------------------------------------------------------
+  final List<int> _navigationHistory = [0];
+
   // --- HELPER: Mark specific notification types as read ---
   Future<void> _markAsRead(List<String> types) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -57,60 +71,87 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  // 1. Initialize Repository (SOLID: Dependency Inversion)
-  final _repository = DashboardRepository();
+  // --- FIX: Custom Tab Switch Logic ---
+  void _onTabTapped(int index) {
+    if (_selectedIndex == index) return;
 
-  int _selectedIndex = 0;
-  bool _showMyPosts = false;
-  String _selectedFilter = "All";
-  String _searchQuery = "";
+    setState(() {
+      _selectedIndex = index;
+      // Add the new tab to our history list
+      _navigationHistory.add(index);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: _selectedIndex == 0 ? _buildHomeWithHeader() : _getBodyContent(),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF2E7EFF),
-        unselectedItemColor: Colors.grey,
-        showUnselectedLabels: true,
+    // -----------------------------------------------------------
+    // FIX: PopScope to Intercept Back Swipe
+    // -----------------------------------------------------------
+    return PopScope(
+      // If canPop is FALSE, the system back button/swipe is blocked,
+      // and onPopInvoked is called instead.
+      // We block it UNLESS we are at the very start (Home only).
+      canPop: _navigationHistory.length <= 1,
+      onPopInvoked: (didPop) {
+        if (didPop) return; // If system already popped, do nothing.
 
-        // --- UPDATED: SIMPLE NAVIGATION ONLY ---
-        onTap: (index) => setState(() => _selectedIndex = index),
+        // Go back to the previous tab in history
+        setState(() {
+          _navigationHistory.removeLast(); // Remove current tab
+          _selectedIndex = _navigationHistory.last; // Go to previous
+        });
+      },
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        body: _selectedIndex == 0 ? _buildHomeWithHeader() : _getBodyContent(),
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: const Color(0xFF2E7EFF),
+          unselectedItemColor: Colors.grey,
+          showUnselectedLabels: true,
 
-        items: [
-          // 0. HOME TAB
-          const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+          // --- UPDATED: Use our custom function ---
+          onTap: _onTabTapped,
 
-          // 1. SEARCH TAB
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.search),
-            label: "Search",
-          ),
+          items: [
+            // 0. HOME TAB
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.home),
+              label: "Home",
+            ),
 
-          // 2. DYNAMIC TAB
-          BottomNavigationBarItem(
-            icon: Icon(_showMyPosts ? Icons.add_circle : Icons.assignment),
-            label: _showMyPosts ? "Post" : "Applied",
-          ),
+            // 1. SEARCH TAB
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.search),
+              label: "Search",
+            ),
 
-          // 3. MESSAGES TAB
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.message),
-            label: "Messages",
-          ),
+            // 2. DYNAMIC TAB
+            BottomNavigationBarItem(
+              icon: Icon(_showMyPosts ? Icons.add_circle : Icons.assignment),
+              label: _showMyPosts ? "Post" : "Applied",
+            ),
 
-          // 4. PROFILE TAB
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: "Profile",
-          ),
-        ],
+            // 3. MESSAGES TAB
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.message),
+              label: "Messages",
+            ),
+
+            // 4. PROFILE TAB
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.person),
+              label: "Profile",
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  // ... (The rest of your existing code: _buildHomeWithHeader, _getBodyContent, etc.) ...
+  // ... Paste the rest of your helper widgets below exactly as they were ...
 
   Widget _buildHomeWithHeader() {
     final user = FirebaseAuth.instance.currentUser;
@@ -198,7 +239,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   // --- NOTIFICATION BELL ---
                   GestureDetector(
                     onTap: () {
-                      // 1. Mark as Read logic
                       if (_showMyPosts) {
                         _markAsRead(['application']);
                       } else {
@@ -212,7 +252,6 @@ class _DashboardPageState extends State<DashboardPage> {
                         ]);
                       }
 
-                      // 2. Navigate
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -258,7 +297,6 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: 24),
 
               if (_showMyPosts)
-                // --- MY POSTS MODE (Employer) ---
                 StreamBuilder<QuerySnapshot>(
                   stream: _repository.getMyPostsStream(),
                   builder: (context, snapshot) {
@@ -311,8 +349,6 @@ class _DashboardPageState extends State<DashboardPage> {
                             ),
                           ),
                         ),
-
-                        // --- FIXED: Real Rating Data for "My Posts" ---
                         StreamBuilder<DocumentSnapshot>(
                           stream: _repository.getUserStatsStream(),
                           builder: (context, userSnapshot) {
@@ -346,8 +382,6 @@ class _DashboardPageState extends State<DashboardPage> {
                             );
                           },
                         ),
-
-                        // ---------------------------------------------
                         StatCard(
                           value: total.toString(),
                           label: "Total Posts",
@@ -367,7 +401,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   },
                 )
               else
-                // --- FIND JOBS MODE (Worker) ---
                 StreamBuilder<DocumentSnapshot>(
                   stream: _repository.getUserStatsStream(),
                   builder: (context, snapshot) {
@@ -375,15 +408,10 @@ class _DashboardPageState extends State<DashboardPage> {
 
                     final String appliedCount =
                         data?['appliedCount']?.toString() ?? "0";
-
                     final String savedCount =
                         data?['savedCount']?.toString() ?? "0";
-
-                    // --- FIXED: Fetch 'hiredCompleted' for real data ---
                     final String hiredCount =
                         data?['hiredCompleted']?.toString() ?? "0";
-
-                    // --- FIXED: Safe Rating Parse ---
                     double rating = (data?['rating'] is num)
                         ? (data?['rating'] as num).toDouble()
                         : 0.0;
@@ -517,7 +545,6 @@ class _DashboardPageState extends State<DashboardPage> {
               var docs = snapshot.data!.docs;
               final currentUid = FirebaseAuth.instance.currentUser?.uid;
 
-              // Filter logic (Hide my own posts in 'Find Jobs' mode)
               if (!_showMyPosts && currentUid != null) {
                 docs = docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
@@ -608,13 +635,13 @@ class _DashboardPageState extends State<DashboardPage> {
                     "rating": data['posterRating']?.toString() ?? "New",
                     "posterName": data['posterName'] ?? "Employer",
                     "posterPhoto": data['posterPhoto'],
+                    "postedBy": data['postedBy'],
+                    "hiredApplicantId": data['hiredApplicantId'],
                   };
 
                   return JobCard(
                     job: jobMap,
-                    // --- CHANGED HERE: Always show status for better UX ---
                     showStatus: true,
-                    // ----------------------------------------------------
                     onTap: () {
                       Navigator.push(
                         context,
@@ -637,7 +664,6 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _getBodyContent() {
     switch (_selectedIndex) {
       case 1:
-        // Pass the isEmployerMode parameter
         return SearchPage(isEmployerMode: _showMyPosts);
       case 2:
         return _showMyPosts
