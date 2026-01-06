@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter/services.dart'; // Needed for PlatformException
 import '../../data/repositories/profile_repository.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -18,9 +19,8 @@ class _ProfilePageState extends State<ProfilePage> {
   final User? user = FirebaseAuth.instance.currentUser;
   final ImagePicker _picker = ImagePicker();
 
-  // --- NEW: LOGOUT LOGIC ---
+  // --- LOGOUT LOGIC ---
   Future<void> _handleLogout() async {
-    // 1. Confirm Logout
     bool? shouldLogout = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -40,78 +40,112 @@ class _ProfilePageState extends State<ProfilePage> {
     );
 
     if (shouldLogout == true) {
-      // 2. Sign out from Firebase
       await _repository.signOut();
-
-      // 3. FORCE NAVIGATION to Login Page and clear history
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const LoginPage()),
-          (route) => false, // This removes all back buttons
+          (route) => false,
         );
       }
     }
   }
 
-  // --- 1. IMAGE PICKER LOGIC ---
+  // --- NEW: PERMISSION RECOVERY DIALOG ---
+  void _showPermissionDialog(String feature) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("$feature Access Denied"),
+        content: Text(
+          "To upload a profile picture, please enable $feature access in your phone settings.\n\n"
+          "1. Go to Settings\n"
+          "2. Select Apps > BuhayLink\n"
+          "3. Tap Permissions\n"
+          "4. Allow $feature",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- IMAGE PICKER LOGIC (UPDATED FOR UX) ---
   Future<void> _pickAndUploadImage() async {
-    try {
-      showModalBottomSheet(
-        context: context,
-        builder: (context) => SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text('Gallery'),
-                onTap: () async {
-                  Navigator.of(context).pop();
+    showModalBottomSheet(
+      context: context,
+      builder: (modalContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Gallery'),
+              onTap: () async {
+                Navigator.of(modalContext).pop();
+                try {
                   final XFile? image = await _picker.pickImage(
                     source: ImageSource.gallery,
                   );
                   if (image != null) _uploadFile(File(image.path));
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_camera),
-                title: const Text('Camera'),
-                onTap: () async {
-                  Navigator.of(context).pop();
+                } catch (e) {
+                  // If gallery is denied, show the helpful dialog
+                  _showPermissionDialog("Photo Library");
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera),
+              title: const Text('Camera'),
+              onTap: () async {
+                Navigator.of(modalContext).pop();
+                try {
                   final XFile? image = await _picker.pickImage(
                     source: ImageSource.camera,
                   );
                   if (image != null) _uploadFile(File(image.path));
-                },
-              ),
-            ],
-          ),
+                } catch (e) {
+                  // If camera is denied (even permanently), show the helpful dialog
+                  _showPermissionDialog("Camera");
+                }
+              },
+            ),
+          ],
         ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error: $e")));
-    }
+      ),
+    );
   }
 
   Future<void> _uploadFile(File file) async {
+    if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text("Uploading image...")));
+
     try {
       String downloadUrl = await _repository.uploadProfileImage(file);
       await _repository.updateProfile(photoUrl: downloadUrl);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Profile picture updated!")));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Profile picture updated!"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Upload failed: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Upload failed: $e")));
+      }
     }
   }
 
-  // --- 2. LOCATION LOGIC ---
+  // --- LOCATION LOGIC ---
   void _showLocationDialog(String currentLocation) {
     final TextEditingController controller = TextEditingController(
       text: currentLocation,
@@ -154,6 +188,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
                     ),
                     onPressed: isLoading
                         ? null
@@ -164,11 +199,15 @@ class _ProfilePageState extends State<ProfilePage> {
                                   .getCurrentLocation();
                               controller.text = address;
                             } catch (e) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text("GPS Error: $e")),
-                              );
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text("GPS Error: $e")),
+                                );
+                              }
                             } finally {
-                              setState(() => isLoading = false);
+                              if (mounted) {
+                                setState(() => isLoading = false);
+                              }
                             }
                           },
                   ),
@@ -194,7 +233,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // --- 3. OTHER DIALOGS (Name, About & Skills) ---
+  // --- OTHER DIALOGS ---
   void _showEditDialog(String title, String value, Function(String) onSave) {
     final controller = TextEditingController(text: value);
     showDialog(
@@ -247,7 +286,10 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.add_circle, color: Colors.blue),
+                      icon: const Icon(
+                        Icons.add_circle,
+                        color: Color(0xFF2E7EFF),
+                      ),
                       onPressed: () {
                         if (skillController.text.isNotEmpty) {
                           setDialogState(() {
@@ -293,26 +335,30 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  // --- UI BUILD ---
   @override
   Widget build(BuildContext context) {
-    if (user == null)
+    if (user == null) {
       return const Scaffold(body: Center(child: Text("Please log in")));
+    }
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: Colors.grey[50],
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text(
-          'My Profile',
-          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        centerTitle: true,
         actions: [
-          // UPDATED: Now calls _handleLogout instead of just _repository.signOut()
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.redAccent),
-            onPressed: _handleLogout,
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.logout, color: Colors.white),
+              onPressed: _handleLogout,
+            ),
           ),
         ],
       ),
@@ -322,8 +368,9 @@ class _ProfilePageState extends State<ProfilePage> {
             .doc(user!.uid)
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting)
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
 
           var data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
 
@@ -336,120 +383,282 @@ class _ProfilePageState extends State<ProfilePage> {
           String location = data['location'] ?? "No location set";
           List<dynamic> skills = data['skills'] ?? [];
 
+          double rawRating = (data['rating'] is num)
+              ? (data['rating'] as num).toDouble()
+              : 0.0;
+          String rating = rawRating.toStringAsFixed(1);
+
+          String applied = (data['appliedCount']?.toString() ?? "0");
+
           return SingleChildScrollView(
             padding: const EdgeInsets.only(bottom: 40),
             child: Column(
               children: [
-                const SizedBox(height: 30),
-                // --- PROFILE HEADER ---
-                Stack(
-                  alignment: Alignment.bottomRight,
-                  children: [
-                    CircleAvatar(
-                      radius: 60,
-                      backgroundColor: Colors.grey[300],
-                      backgroundImage: (data['photoUrl'] != null)
-                          ? NetworkImage(data['photoUrl'])
-                          : (user?.photoURL != null
-                                ? NetworkImage(user!.photoURL!)
-                                : null),
-                      child:
-                          (data['photoUrl'] == null && user?.photoURL == null)
-                          ? const Icon(
-                              Icons.person,
-                              size: 60,
-                              color: Colors.white,
-                            )
-                          : null,
-                    ),
-                    GestureDetector(
-                      onTap: _pickAndUploadImage,
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(
-                          color: Colors.blue,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.camera_alt,
-                          color: Colors.white,
-                          size: 20,
+                // 1. EPIC HEADER SECTION
+                SizedBox(
+                  height: 350,
+                  child: Stack(
+                    alignment: Alignment.topCenter,
+                    clipBehavior: Clip.none,
+                    children: [
+                      // A. Main Gradient
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: 280,
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
+                            ),
+                            borderRadius: BorderRadius.only(
+                              bottomLeft: Radius.circular(40),
+                              bottomRight: Radius.circular(40),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
 
-                // --- NAME SECTION (WITH EDIT) ---
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                      // B. Abstract Circles
+                      Positioned(
+                        top: -60,
+                        left: -40,
+                        child: Container(
+                          height: 200,
+                          width: 200,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.1),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 80,
+                        right: -30,
+                        child: Container(
+                          height: 150,
+                          width: 150,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.1),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 200,
+                        left: 30,
+                        child: Container(
+                          height: 80,
+                          width: 80,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.08),
+                          ),
+                        ),
+                      ),
+
+                      // C. Profile Image
+                      Positioned(
+                        top: 210,
+                        child: Stack(
+                          alignment: Alignment.bottomRight,
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 4,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 20,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
+                              ),
+                              child: CircleAvatar(
+                                radius: 65,
+                                backgroundColor: Colors.white,
+                                backgroundImage: (data['photoUrl'] != null)
+                                    ? NetworkImage(data['photoUrl'])
+                                    : (user?.photoURL != null
+                                          ? NetworkImage(user!.photoURL!)
+                                          : null),
+                                child:
+                                    (data['photoUrl'] == null &&
+                                        user?.photoURL == null)
+                                    ? const Icon(
+                                        Icons.person,
+                                        size: 70,
+                                        color: Colors.grey,
+                                      )
+                                    : null,
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: _pickAndUploadImage,
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF2E7EFF),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+
+                // 2. USER INFO
+                Column(
                   children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.edit,
+                            size: 18,
+                            color: Colors.grey,
+                          ),
+                          onPressed: () => _showEditDialog(
+                            "Name",
+                            name,
+                            (val) => _repository.updateProfile(name: val),
+                          ),
+                        ),
+                      ],
+                    ),
                     Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      email,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
                     ),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.edit,
-                        size: 18,
-                        color: Colors.grey,
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
                       ),
-                      onPressed: () => _showEditDialog(
-                        "Name",
-                        name,
-                        (val) => _repository.updateProfile(name: val),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.green.shade400,
+                            Colors.green.shade700,
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.green.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.verified, color: Colors.white, size: 16),
+                          SizedBox(width: 4),
+                          Text(
+                            "Verified Member",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
 
-                Text(
-                  email,
-                  style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green[50],
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    "Verified Member",
-                    style: TextStyle(
-                      color: Colors.green[700],
-                      fontWeight: FontWeight.bold,
-                    ),
+                const SizedBox(height: 24),
+
+                // 3. STATS ROW
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildStatItem(
+                        "Rating",
+                        rating,
+                        Icons.star_rounded,
+                        Colors.amber,
+                      ),
+                      _buildVerticalDivider(),
+                      _buildStatItem(
+                        "Applied",
+                        applied,
+                        Icons.work_rounded,
+                        Colors.blue,
+                      ),
+                      _buildVerticalDivider(),
+                      _buildStatItem(
+                        "Skills",
+                        skills.length.toString(),
+                        Icons.school_rounded,
+                        Colors.purple,
+                      ),
+                    ],
                   ),
                 ),
 
                 const SizedBox(height: 30),
 
-                // --- INFO CARDS ---
-                _buildInfoCard(
-                  "About Me",
-                  about,
-                  Icons.person_outline,
-                  () => _showEditDialog(
-                    "About Me",
-                    about,
-                    (val) => _repository.updateProfile(about: val),
+                // 4. INFO CARDS
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    children: [
+                      _buildInfoCard(
+                        "About Me",
+                        about,
+                        Icons.person_outline,
+                        Colors.orange,
+                        () => _showEditDialog(
+                          "About Me",
+                          about,
+                          (val) => _repository.updateProfile(about: val),
+                        ),
+                      ),
+                      _buildInfoCard(
+                        "Location",
+                        location,
+                        Icons.location_on_outlined,
+                        Colors.redAccent,
+                        () => _showLocationDialog(location),
+                      ),
+                      _buildSkillsCard(skills),
+                    ],
                   ),
                 ),
-                _buildInfoCard(
-                  "Location",
-                  location,
-                  Icons.location_on_outlined,
-                  () => _showLocationDialog(location),
-                ),
-                _buildSkillsCard(skills),
               ],
             ),
           );
@@ -458,24 +667,60 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // --- UI WIDGETS ---
+  // --- WIDGET HELPERS ---
+
+  Widget _buildVerticalDivider() {
+    return Container(height: 30, width: 1, color: Colors.grey[300]);
+  }
+
+  Widget _buildStatItem(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 24),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[500],
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildInfoCard(
     String title,
     String content,
     IconData icon,
+    Color iconColor,
     VoidCallback onEdit,
   ) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.grey.withOpacity(0.08),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -487,25 +732,47 @@ class _ProfilePageState extends State<ProfilePage> {
             children: [
               Row(
                 children: [
-                  Icon(icon, color: Colors.blue),
-                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: iconColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, color: iconColor, size: 20),
+                  ),
+                  const SizedBox(width: 12),
                   Text(
                     title,
                     style: const TextStyle(
-                      fontSize: 18,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
+                      color: Colors.black87,
                     ),
                   ),
                 ],
               ),
-              IconButton(
-                icon: const Icon(Icons.edit, size: 20, color: Colors.grey),
-                onPressed: onEdit,
+              GestureDetector(
+                onTap: onEdit,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: const Icon(Icons.edit, size: 16, color: Colors.grey),
+                ),
               ),
             ],
           ),
-          const Divider(),
-          Text(content, style: TextStyle(color: Colors.grey[700], height: 1.5)),
+          const SizedBox(height: 16),
+          Text(
+            content,
+            style: TextStyle(
+              color: Colors.grey[700],
+              height: 1.5,
+              fontSize: 14,
+            ),
+          ),
         ],
       ),
     );
@@ -513,16 +780,16 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _buildSkillsCard(List<dynamic> skills) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.grey.withOpacity(0.08),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -532,35 +799,78 @@ class _ProfilePageState extends State<ProfilePage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.star_outline, color: Colors.blue),
-                  SizedBox(width: 8),
-                  Text(
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.purple.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.star_rounded,
+                      color: Colors.purple,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
                     "Skills",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
                   ),
                 ],
               ),
-              IconButton(
-                icon: const Icon(Icons.edit, size: 20, color: Colors.grey),
-                onPressed: () => _showSkillsDialog(skills),
+              GestureDetector(
+                onTap: () => _showSkillsDialog(skills),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: const Icon(Icons.edit, size: 16, color: Colors.grey),
+                ),
               ),
             ],
           ),
-          const Divider(),
+          const SizedBox(height: 16),
           skills.isEmpty
               ? const Text(
                   "No skills added yet.",
-                  style: TextStyle(color: Colors.grey),
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontStyle: FontStyle.italic,
+                  ),
                 )
               : Wrap(
                   spacing: 8,
+                  runSpacing: 8,
                   children: skills
                       .map(
-                        (s) => Chip(
-                          label: Text(s),
-                          backgroundColor: Colors.blue[50],
+                        (s) => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2E7EFF).withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFF2E7EFF).withOpacity(0.2),
+                            ),
+                          ),
+                          child: Text(
+                            s,
+                            style: const TextStyle(
+                              color: Color(0xFF2E7EFF),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
                         ),
                       )
                       .toList(),
