@@ -1,3 +1,4 @@
+import 'dart:async'; // Needed for the animation timer
 import 'package:buhay_link/widgets/notification_badge.dart';
 import 'package:buhay_link/features/jobs/data/repositories/dashboard_repository.dart';
 import 'package:buhay_link/widgets/job_card.dart';
@@ -92,46 +93,51 @@ class _DashboardPageState extends State<DashboardPage> {
       child: Scaffold(
         backgroundColor: Colors.grey[50],
 
-        // IMPORTANT: extendBody allows content to be seen behind the floating bar
-        extendBody: true,
+        // FIX: Changed to false. This prevents content from scrolling BEHIND the navbar.
+        extendBody: false,
 
         body: _selectedIndex == 0 ? _buildHomeWithHeader() : _getBodyContent(),
 
         // ---------------------------------------------------------
-        // NEW: FLOATING ISLAND NAVIGATION BAR
+        // FLOATING ISLAND NAVIGATION BAR
         // ---------------------------------------------------------
-        bottomNavigationBar: SafeArea(
-          child: Container(
-            height: 70,
-            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildNavBarItem(0, Icons.home_rounded, "Home"),
-                _buildNavBarItem(1, Icons.search_rounded, "Search"),
+        bottomNavigationBar: Container(
+          // FIX: Added background color to block scrolling text
+          color: Colors.grey[50],
+          child: SafeArea(
+            child: Container(
+              height: 70,
+              // FIX: Adjusted margin to sit nicely in the solid block
+              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildNavBarItem(0, Icons.home_rounded, "Home"),
+                  _buildNavBarItem(1, Icons.search_rounded, "Search"),
 
-                // Special Middle Button
-                _buildMiddleNavBarItem(
-                  2,
-                  _showMyPosts ? Icons.add_rounded : Icons.assignment_rounded,
-                  _showMyPosts ? "Post" : "Applied",
-                ),
+                  // Special Middle Button
+                  _buildMiddleNavBarItem(
+                    2,
+                    _showMyPosts ? Icons.add_rounded : Icons.assignment_rounded,
+                    _showMyPosts ? "Post" : "Applied",
+                  ),
 
-                _buildNavBarItem(3, Icons.chat_bubble_rounded, "Chat"),
-                _buildNavBarItem(4, Icons.person_rounded, "Profile"),
-              ],
+                  _buildNavBarItem(3, Icons.chat_bubble_rounded, "Chat"),
+                  _buildNavBarItem(4, Icons.person_rounded, "Profile"),
+                ],
+              ),
             ),
           ),
         ),
@@ -154,7 +160,6 @@ class _DashboardPageState extends State<DashboardPage> {
             AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeOut,
-              // Subtle scale effect when active
               transform: Matrix4.identity()..scale(isSelected ? 1.1 : 1.0),
               child: Icon(
                 icon,
@@ -189,7 +194,6 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Gradient Circle Background
             Container(
               height: 38,
               width: 38,
@@ -197,14 +201,11 @@ class _DashboardPageState extends State<DashboardPage> {
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
                   colors: isSelected
-                      ? [
-                          const Color(0xFF2E7EFF),
-                          const Color(0xFF9C27B0),
-                        ] // Active: Full color
+                      ? [const Color(0xFF2E7EFF), const Color(0xFF9C27B0)]
                       : [
                           const Color(0xFF2E7EFF).withOpacity(0.8),
                           const Color(0xFF9C27B0).withOpacity(0.8),
-                        ], // Inactive: Slightly dimmed
+                        ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -222,7 +223,6 @@ class _DashboardPageState extends State<DashboardPage> {
             Text(
               label,
               style: TextStyle(
-                // Use gradient colors for text if selected
                 color: isSelected ? const Color(0xFF9C27B0) : Colors.grey,
                 fontSize: 10,
                 fontWeight: FontWeight.bold,
@@ -234,332 +234,27 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // ... (The rest of your code remains UNCHANGED) ...
-  // ... Paste the existing _buildHomeWithHeader, _getBodyContent, etc. below ...
-
+  // ---------------------------------------------------------
+  // HOME CONTENT
+  // ---------------------------------------------------------
   Widget _buildHomeWithHeader() {
-    final user = FirebaseAuth.instance.currentUser;
-    final uid = user?.uid;
-    final emailName = user?.email?.split('@')[0] ?? "Guest";
-
     return Column(
       children: [
-        // A. BLUE HEADER
-        Container(
-          padding: const EdgeInsets.only(
-            top: 50,
-            left: 24,
-            right: 24,
-            bottom: 24,
-          ),
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
-            ),
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(30),
-              bottomRight: Radius.circular(30),
-            ),
-          ),
-          child: Column(
-            children: [
-              // Greeting Row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Welcome back,",
-                        style: TextStyle(color: Colors.white70, fontSize: 14),
-                      ),
-                      if (uid != null)
-                        StreamBuilder<DocumentSnapshot>(
-                          stream: _repository.getUserStatsStream(),
-                          builder: (context, snapshot) {
-                            if (snapshot.hasData && snapshot.data!.exists) {
-                              final data =
-                                  snapshot.data!.data()
-                                      as Map<String, dynamic>?;
-                              final String realName =
-                                  data?['fullName'] ??
-                                  data?['firstName'] ??
-                                  data?['username'] ??
-                                  emailName;
-                              return Text(
-                                realName,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              );
-                            }
-                            return Text(
-                              emailName,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            );
-                          },
-                        )
-                      else
-                        const Text(
-                          "Guest",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                    ],
-                  ),
-
-                  // --- NOTIFICATION BELL ---
-                  GestureDetector(
-                    onTap: () {
-                      if (_showMyPosts) {
-                        _markAsRead(['application']);
-                      } else {
-                        _markAsRead([
-                          'new_post',
-                          'post',
-                          'job_post',
-                          'created',
-                          'hired',
-                          'rejected',
-                        ]);
-                      }
-
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              NotificationsPage(isEmployerMode: _showMyPosts),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: NotificationBadge(
-                        icon: Icons.notifications,
-                        color: Colors.white,
-                        isEmployerMode: _showMyPosts,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildToggleButton("Find Jobs", !_showMyPosts),
-                    ),
-                    Expanded(
-                      child: _buildToggleButton("My Posts", _showMyPosts),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              if (_showMyPosts)
-                StreamBuilder<QuerySnapshot>(
-                  stream: _repository.getMyPostsStream(),
-                  builder: (context, snapshot) {
-                    int active = 0;
-                    int hired = 0;
-                    int total = 0;
-
-                    if (snapshot.hasData) {
-                      total = snapshot.data!.docs.length;
-                      active = snapshot.data!.docs
-                          .where((doc) => doc['status'] == 'open')
-                          .length;
-                      hired = snapshot.data!.docs
-                          .where(
-                            (doc) =>
-                                doc['status'] == 'hired' ||
-                                doc['status'] == 'closed',
-                          )
-                          .length;
-                    }
-
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        StatCard(
-                          value: active.toString(),
-                          label: "Active",
-                          icon: Icons.work_outline,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => MyPostedJobsPage(
-                                title: "Active Jobs",
-                                statusFilter: ['open'],
-                              ),
-                            ),
-                          ),
-                        ),
-                        StatCard(
-                          value: hired.toString(),
-                          label: "Hired",
-                          icon: Icons.handshake_rounded,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => MyPostedJobsPage(
-                                title: "Hired History",
-                                statusFilter: ['hired', 'closed'],
-                              ),
-                            ),
-                          ),
-                        ),
-                        StreamBuilder<DocumentSnapshot>(
-                          stream: _repository.getUserStatsStream(),
-                          builder: (context, userSnapshot) {
-                            String rating = "0.0";
-                            if (userSnapshot.hasData &&
-                                userSnapshot.data!.exists) {
-                              final userData =
-                                  userSnapshot.data!.data()
-                                      as Map<String, dynamic>?;
-                              double r = (userData?['rating'] is num)
-                                  ? (userData?['rating'] as num).toDouble()
-                                  : 0.0;
-                              rating = r.toStringAsFixed(1);
-                            }
-
-                            return StatCard(
-                              value: rating,
-                              label: "Ratings",
-                              icon: Icons.star_rounded,
-                              onTap: uid != null
-                                  ? () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => PublicProfilePage(
-                                          userId: uid,
-                                          userName: "Me",
-                                        ),
-                                      ),
-                                    )
-                                  : null,
-                            );
-                          },
-                        ),
-                        StatCard(
-                          value: total.toString(),
-                          label: "Total Posts",
-                          icon: Icons.list_alt_rounded,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => MyPostedJobsPage(
-                                title: "All Posts",
-                                statusFilter: [],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                )
-              else
-                StreamBuilder<DocumentSnapshot>(
-                  stream: _repository.getUserStatsStream(),
-                  builder: (context, snapshot) {
-                    final data = snapshot.data?.data() as Map<String, dynamic>?;
-
-                    final String appliedCount =
-                        data?['appliedCount']?.toString() ?? "0";
-                    final String savedCount =
-                        data?['savedCount']?.toString() ?? "0";
-                    final String hiredCount =
-                        data?['hiredCompleted']?.toString() ?? "0";
-                    double rating = (data?['rating'] is num)
-                        ? (data?['rating'] as num).toDouble()
-                        : 0.0;
-
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        StatCard(
-                          value: appliedCount,
-                          label: "Applied",
-                          icon: Icons.assignment_turned_in_rounded,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const AppliedJobsPage(),
-                            ),
-                          ),
-                        ),
-                        StatCard(
-                          value: hiredCount,
-                          label: "Hired",
-                          icon: Icons.check_circle_outline,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const HiredJobsPage(),
-                            ),
-                          ),
-                        ),
-                        StatCard(
-                          value: rating.toStringAsFixed(1),
-                          label: "Ratings",
-                          icon: Icons.star_rounded,
-                          onTap: uid != null
-                              ? () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => PublicProfilePage(
-                                      userId: uid,
-                                      userName: "Me",
-                                    ),
-                                  ),
-                                )
-                              : null,
-                        ),
-                        StatCard(
-                          value: savedCount,
-                          label: "Saved",
-                          icon: Icons.bookmark_rounded,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const SavedJobsPage(),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-            ],
-          ),
+        // A. ISOLATED ALIVE HEADER
+        _AnimatedHeader(
+          repository: _repository,
+          showMyPosts: _showMyPosts,
+          onToggleView: (bool isMyPosts) {
+            setState(() {
+              _showMyPosts = isMyPosts;
+              _selectedFilter = "All";
+              _searchQuery = "";
+            });
+          },
+          onMarkRead: _markAsRead,
         ),
 
+        // B. SEARCH BAR
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: TextField(
@@ -581,30 +276,40 @@ class _DashboardPageState extends State<DashboardPage> {
                 borderRadius: BorderRadius.circular(16),
                 borderSide: BorderSide(color: Colors.grey.shade200),
               ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Color(0xFF2E7EFF)),
+              ),
             ),
           ),
         ),
 
+        // C. IMPROVED UI FILTERS
         if (!_showMyPosts)
           SizedBox(
-            height: 40,
+            height: 50,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              clipBehavior: Clip.none,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
               children: [
-                _buildFilterChip("All"),
-                const SizedBox(width: 10),
-                _buildFilterChip("Nearby", icon: Icons.location_on_outlined),
-                const SizedBox(width: 10),
-                _buildFilterChip("Urgent", icon: Icons.access_time),
-                const SizedBox(width: 10),
-                _buildFilterChip("\$ High Pay"),
+                _buildFilterChip("All", icon: Icons.grid_view_rounded),
+                const SizedBox(width: 12),
+                _buildFilterChip("Nearby", icon: Icons.near_me_rounded),
+                const SizedBox(width: 12),
+                _buildFilterChip("Urgent", icon: Icons.timer_rounded),
+                const SizedBox(width: 12),
+                _buildFilterChip(
+                  "₱ High Pay",
+                  icon: Icons.account_balance_wallet_rounded,
+                ),
               ],
             ),
           ),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
 
+        // D. JOB LIST STREAM
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: _showMyPosts
@@ -659,7 +364,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             true,
                       )
                       .toList();
-                } else if (_selectedFilter == "\$ High Pay") {
+                } else if (_selectedFilter == "₱ High Pay") {
                   docs = docs
                       .where(
                         (doc) =>
@@ -762,13 +467,440 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  // ---------------------------------------------------------
+  // IMPROVED FILTER CHIP UI
+  // ---------------------------------------------------------
+  Widget _buildFilterChip(String label, {IconData? icon}) {
+    bool isActive = _selectedFilter == label;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedFilter = label),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          gradient: isActive
+              ? const LinearGradient(
+                  colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: isActive ? null : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: isActive
+                  ? const Color(0xFF2E7EFF).withOpacity(0.4)
+                  : Colors.grey.withOpacity(0.1),
+              blurRadius: isActive ? 10 : 5,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: isActive ? null : Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 16,
+                color: isActive ? Colors.white : Colors.grey[600],
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? Colors.white : Colors.grey[700],
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =========================================================================
+// ISOLATED HEADER WIDGET
+// =========================================================================
+class _AnimatedHeader extends StatefulWidget {
+  final DashboardRepository repository;
+  final bool showMyPosts;
+  final Function(bool) onToggleView;
+  final Function(List<String>) onMarkRead;
+
+  const _AnimatedHeader({
+    required this.repository,
+    required this.showMyPosts,
+    required this.onToggleView,
+    required this.onMarkRead,
+  });
+
+  @override
+  State<_AnimatedHeader> createState() => _AnimatedHeaderState();
+}
+
+class _AnimatedHeaderState extends State<_AnimatedHeader> {
+  List<Color> _gradientColors = [
+    const Color(0xFF2E7EFF),
+    const Color(0xFF9C27B0),
+  ];
+  Alignment _beginAlignment = Alignment.topLeft;
+  Alignment _endAlignment = Alignment.bottomRight;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (mounted) {
+        setState(() {
+          if (_beginAlignment == Alignment.topLeft) {
+            _beginAlignment = Alignment.topRight;
+            _endAlignment = Alignment.bottomLeft;
+            _gradientColors = [
+              const Color(0xFF9C27B0),
+              const Color(0xFF2E7EFF),
+            ];
+          } else {
+            _beginAlignment = Alignment.topLeft;
+            _endAlignment = Alignment.bottomRight;
+            _gradientColors = [
+              const Color(0xFF2E7EFF),
+              const Color(0xFF9C27B0),
+            ];
+          }
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid;
+    final emailName = user?.email?.split('@')[0] ?? "Guest";
+
+    return AnimatedContainer(
+      duration: const Duration(seconds: 3),
+      padding: const EdgeInsets.only(top: 50, left: 24, right: 24, bottom: 24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: _beginAlignment,
+          end: _endAlignment,
+          colors: _gradientColors,
+        ),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(30),
+          bottomRight: Radius.circular(30),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2E7EFF).withOpacity(0.4),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Welcome back,",
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  if (uid != null)
+                    StreamBuilder<DocumentSnapshot>(
+                      stream: widget.repository.getUserStatsStream(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData && snapshot.data!.exists) {
+                          final data =
+                              snapshot.data!.data() as Map<String, dynamic>?;
+                          final String realName =
+                              data?['fullName'] ??
+                              data?['firstName'] ??
+                              data?['username'] ??
+                              emailName;
+                          return Text(
+                            realName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          );
+                        }
+                        return Text(
+                          emailName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        );
+                      },
+                    )
+                  else
+                    const Text(
+                      "Guest",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                ],
+              ),
+              GestureDetector(
+                onTap: () {
+                  if (widget.showMyPosts) {
+                    widget.onMarkRead(['application']);
+                  } else {
+                    widget.onMarkRead([
+                      'new_post',
+                      'post',
+                      'job_post',
+                      'created',
+                      'hired',
+                      'rejected',
+                    ]);
+                  }
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          NotificationsPage(isEmployerMode: widget.showMyPosts),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white24, width: 1),
+                  ),
+                  child: NotificationBadge(
+                    icon: Icons.notifications,
+                    color: Colors.white,
+                    isEmployerMode: widget.showMyPosts,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildToggleButton("Find Jobs", !widget.showMyPosts),
+                ),
+                Expanded(
+                  child: _buildToggleButton("My Posts", widget.showMyPosts),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          if (widget.showMyPosts)
+            StreamBuilder<QuerySnapshot>(
+              stream: widget.repository.getMyPostsStream(),
+              builder: (context, snapshot) {
+                int active = 0;
+                int hired = 0;
+                int total = 0;
+                if (snapshot.hasData) {
+                  total = snapshot.data!.docs.length;
+                  active = snapshot.data!.docs
+                      .where((doc) => doc['status'] == 'open')
+                      .length;
+                  hired = snapshot.data!.docs
+                      .where(
+                        (doc) =>
+                            doc['status'] == 'hired' ||
+                            doc['status'] == 'closed',
+                      )
+                      .length;
+                }
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    StatCard(
+                      value: active.toString(),
+                      label: "Active",
+                      icon: Icons.work_outline,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MyPostedJobsPage(
+                            title: "Active Jobs",
+                            statusFilter: ['open'],
+                          ),
+                        ),
+                      ),
+                    ),
+                    StatCard(
+                      value: hired.toString(),
+                      label: "Hired",
+                      icon: Icons.handshake_rounded,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MyPostedJobsPage(
+                            title: "Hired History",
+                            statusFilter: ['hired', 'closed'],
+                          ),
+                        ),
+                      ),
+                    ),
+                    StreamBuilder<DocumentSnapshot>(
+                      stream: widget.repository.getUserStatsStream(),
+                      builder: (context, userSnapshot) {
+                        String rating = "0.0";
+                        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+                          final userData =
+                              userSnapshot.data!.data()
+                                  as Map<String, dynamic>?;
+                          double r = (userData?['rating'] is num)
+                              ? (userData?['rating'] as num).toDouble()
+                              : 0.0;
+                          rating = r.toStringAsFixed(1);
+                        }
+                        return StatCard(
+                          value: rating,
+                          label: "Ratings",
+                          icon: Icons.star_rounded,
+                          onTap: uid != null
+                              ? () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => PublicProfilePage(
+                                      userId: uid,
+                                      userName: "Me",
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        );
+                      },
+                    ),
+                    StatCard(
+                      value: total.toString(),
+                      label: "Total Posts",
+                      icon: Icons.list_alt_rounded,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MyPostedJobsPage(
+                            title: "All Posts",
+                            statusFilter: [],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            )
+          else
+            StreamBuilder<DocumentSnapshot>(
+              stream: widget.repository.getUserStatsStream(),
+              builder: (context, snapshot) {
+                final data = snapshot.data?.data() as Map<String, dynamic>?;
+                final String appliedCount =
+                    data?['appliedCount']?.toString() ?? "0";
+                final String savedCount =
+                    data?['savedCount']?.toString() ?? "0";
+                final String hiredCount =
+                    data?['hiredCompleted']?.toString() ?? "0";
+                double rating = (data?['rating'] is num)
+                    ? (data?['rating'] as num).toDouble()
+                    : 0.0;
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    StatCard(
+                      value: appliedCount,
+                      label: "Applied",
+                      icon: Icons.assignment_turned_in_rounded,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const AppliedJobsPage(),
+                        ),
+                      ),
+                    ),
+                    StatCard(
+                      value: hiredCount,
+                      label: "Hired",
+                      icon: Icons.check_circle_outline,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const HiredJobsPage(),
+                        ),
+                      ),
+                    ),
+                    StatCard(
+                      value: rating.toStringAsFixed(1),
+                      label: "Ratings",
+                      icon: Icons.star_rounded,
+                      onTap: uid != null
+                          ? () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => PublicProfilePage(
+                                  userId: uid,
+                                  userName: "Me",
+                                ),
+                              ),
+                            )
+                          : null,
+                    ),
+                    StatCard(
+                      value: savedCount,
+                      label: "Saved",
+                      icon: Icons.bookmark_rounded,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SavedJobsPage(),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildToggleButton(String text, bool isActive) {
     return GestureDetector(
-      onTap: () => setState(() {
-        _showMyPosts = text == "My Posts";
-        _selectedFilter = "All";
-        _searchQuery = "";
-      }),
+      onTap: () => widget.onToggleView(text == "My Posts"),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
@@ -783,42 +915,6 @@ class _DashboardPageState extends State<DashboardPage> {
               fontWeight: FontWeight.bold,
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(String label, {IconData? icon}) {
-    bool isActive = _selectedFilter == label;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedFilter = label),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF2E7EFF) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: isActive ? null : Border.all(color: Colors.grey.shade300),
-        ),
-        child: Row(
-          children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: 14,
-                color: isActive ? Colors.white : Colors.grey[600],
-              ),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                color: isActive ? Colors.white : Colors.grey[800],
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
-          ],
         ),
       ),
     );
