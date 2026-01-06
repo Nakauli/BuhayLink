@@ -29,15 +29,44 @@ class _SearchPageState extends State<SearchPage> {
   double? _maxBudget;
   String _selectedStatus = "All";
 
+  // --- UPDATED: Extensive Category List (Matches AddJobPage) ---
   final List<String> _categories = [
-    "All Categories",
-    "Plumbing",
-    "Carpentry",
-    "Painting",
-    "Electrical",
-    "Cleaning",
+    "All Categories", // Index 0
     "General",
+    "Plumbing",
+    "Electrical",
+    "Carpentry",
+    "Cleaning / Housekeeping",
+    "Painting",
+    "Welding",
+    "Construction / Labor",
+    "Appliance Repair",
+    "Gardening / Landscaping",
+    "Driver / Rider",
+    "Nanny / Yaya",
+    "Caregiver",
+    "Cooking / Chef",
+    "Massage / Therapy",
+    "Hair & Beauty",
+    "Delivery / Errand",
+    "Event Helper / Staff",
+    "Security",
+    "Computer / Phone Repair",
+    "Auto Mechanic",
+    "Tutor / Academic",
+    "Music / Arts Lessons",
+    "Virtual Assistant",
+    "Graphic Design",
+    "Video Editing",
+    "Social Media Manager",
+    "Web / App Development",
+    "Writing / Translation",
+    "Data Entry",
+    "Customer Service",
+    "Accounting / Bookkeeping",
+    "Other",
   ];
+
   final List<String> _statusOptions = ["All", "Open", "In Progress", "Hired"];
 
   // --- 2. SHOW FILTER MODAL ---
@@ -96,6 +125,15 @@ class _SearchPageState extends State<SearchPage> {
                               _minBudgetController.clear();
                               _maxBudgetController.clear();
                               _selectedStatus = "All";
+                              _selectedCategoryIndex = 0; // Reset Category
+                            });
+                            // Apply reset to main state as well
+                            setState(() {
+                              _locationQuery = "";
+                              _minBudget = null;
+                              _maxBudget = null;
+                              _selectedStatus = "All";
+                              _selectedCategoryIndex = 0;
                             });
                           },
                           child: const Text(
@@ -104,6 +142,36 @@ class _SearchPageState extends State<SearchPage> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // --- NEW: Category Dropdown in Modal ---
+                    _buildModernLabel("Category"),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          value: _selectedCategoryIndex,
+                          isExpanded: true,
+                          icon: const Icon(
+                            Icons.arrow_drop_down,
+                            color: Color(0xFF2E7EFF),
+                          ),
+                          items: List.generate(_categories.length, (index) {
+                            return DropdownMenuItem(
+                              value: index,
+                              child: Text(_categories[index]),
+                            );
+                          }),
+                          onChanged: (val) {
+                            setModalState(() => _selectedCategoryIndex = val!);
+                          },
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 20),
 
@@ -124,8 +192,9 @@ class _SearchPageState extends State<SearchPage> {
                           child: _buildModernTextField(
                             controller: _minBudgetController,
                             hint: "Min",
-                            icon: Icons.attach_money,
+                            icon: Icons.account_balance_wallet_outlined,
                             isNumber: true,
+                            isCurrency: true,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -133,8 +202,9 @@ class _SearchPageState extends State<SearchPage> {
                           child: _buildModernTextField(
                             controller: _maxBudgetController,
                             hint: "Max",
-                            icon: Icons.attach_money,
+                            icon: Icons.account_balance_wallet_outlined,
                             isNumber: true,
+                            isCurrency: true,
                           ),
                         ),
                       ],
@@ -192,6 +262,7 @@ class _SearchPageState extends State<SearchPage> {
                       child: ElevatedButton(
                         onPressed: () {
                           setState(() {
+                            // Update main state with modal values
                             _locationQuery = _locationController.text;
                             _minBudget = double.tryParse(
                               _minBudgetController.text,
@@ -199,6 +270,7 @@ class _SearchPageState extends State<SearchPage> {
                             _maxBudget = double.tryParse(
                               _maxBudgetController.text,
                             );
+                            // Category is already updated via _selectedCategoryIndex
                           });
                           Navigator.pop(context);
                         },
@@ -249,6 +321,7 @@ class _SearchPageState extends State<SearchPage> {
     required String hint,
     required IconData icon,
     bool isNumber = false,
+    bool isCurrency = false,
   }) {
     return TextField(
       controller: controller,
@@ -256,7 +329,22 @@ class _SearchPageState extends State<SearchPage> {
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(color: Colors.grey[400]),
-        prefixIcon: Icon(icon, color: const Color(0xFF2E7EFF), size: 20),
+        prefixIcon: isCurrency
+            ? const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 14),
+                child: Text(
+                  "₱",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2E7EFF),
+                  ),
+                ),
+              )
+            : Icon(icon, color: const Color(0xFF2E7EFF), size: 20),
+        prefixIconConstraints: isCurrency
+            ? const BoxConstraints(minWidth: 0, minHeight: 0)
+            : null,
         filled: true,
         fillColor: Colors.grey[100],
         contentPadding: const EdgeInsets.symmetric(vertical: 16),
@@ -299,7 +387,10 @@ class _SearchPageState extends State<SearchPage> {
       bool matchesCategory = true;
       if (_selectedCategoryIndex != 0) {
         String selectedCat = _categories[_selectedCategoryIndex].toLowerCase();
-        matchesCategory = category.contains(selectedCat);
+        // Check if the job category contains the selected filter text
+        // (e.g. "cleaning" matches "Cleaning / Housekeeping")
+        matchesCategory =
+            category.contains(selectedCat) || selectedCat.contains(category);
       }
 
       bool matchesLocation = true;
@@ -462,17 +553,14 @@ class _SearchPageState extends State<SearchPage> {
             ),
           ),
 
-          // --- CATEGORY CHIPS (FIXED CUT SHADOW) ---
+          // --- CATEGORY CHIPS (Horizontal Quick Filters) ---
           const SizedBox(height: 10),
           SizedBox(
-            height: 60, // Increased height to prevent shadow clipping
+            height: 60,
             child: ListView.separated(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 10,
-              ), // Added vertical padding
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
               scrollDirection: Axis.horizontal,
-              clipBehavior: Clip.none, // Allow shadow to overflow
+              clipBehavior: Clip.none,
               itemCount: _categories.length,
               separatorBuilder: (_, __) => const SizedBox(width: 10),
               itemBuilder: (context, index) {
