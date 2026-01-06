@@ -35,10 +35,7 @@ class _DashboardPageState extends State<DashboardPage> {
   String _selectedFilter = "All";
   String _searchQuery = "";
 
-  // -----------------------------------------------------------
-  // FIX: Navigation History Stack
-  // This remembers where you were: [0, 1, 3] (Home -> Search -> Messages)
-  // -----------------------------------------------------------
+  // Navigation History Stack
   final List<int> _navigationHistory = [0];
 
   // --- HELPER: Mark specific notification types as read ---
@@ -71,78 +68,108 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  // --- FIX: Custom Tab Switch Logic ---
+  // Custom Tab Switch Logic
   void _onTabTapped(int index) {
     if (_selectedIndex == index) return;
 
     setState(() {
       _selectedIndex = index;
-      // Add the new tab to our history list
       _navigationHistory.add(index);
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // -----------------------------------------------------------
-    // FIX: PopScope to Intercept Back Swipe
-    // -----------------------------------------------------------
     return PopScope(
-      // If canPop is FALSE, the system back button/swipe is blocked,
-      // and onPopInvoked is called instead.
-      // We block it UNLESS we are at the very start (Home only).
       canPop: _navigationHistory.length <= 1,
       onPopInvoked: (didPop) {
-        if (didPop) return; // If system already popped, do nothing.
-
-        // Go back to the previous tab in history
+        if (didPop) return;
         setState(() {
-          _navigationHistory.removeLast(); // Remove current tab
-          _selectedIndex = _navigationHistory.last; // Go to previous
+          _navigationHistory.removeLast();
+          _selectedIndex = _navigationHistory.last;
         });
       },
       child: Scaffold(
         backgroundColor: Colors.grey[50],
+
+        // IMPORTANT: extendBody allows content to be seen behind the floating bar
+        extendBody: true,
+
         body: _selectedIndex == 0 ? _buildHomeWithHeader() : _getBodyContent(),
-        bottomNavigationBar: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: const Color(0xFF2E7EFF),
-          unselectedItemColor: Colors.grey,
-          showUnselectedLabels: true,
 
-          // --- UPDATED: Use our custom function ---
-          onTap: _onTabTapped,
-
-          items: [
-            // 0. HOME TAB
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.home),
-              label: "Home",
+        // ---------------------------------------------------------
+        // NEW: FLOATING ISLAND NAVIGATION BAR
+        // ---------------------------------------------------------
+        bottomNavigationBar: SafeArea(
+          child: Container(
+            height: 70,
+            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildNavBarItem(0, Icons.home_rounded, "Home"),
+                _buildNavBarItem(1, Icons.search_rounded, "Search"),
 
-            // 1. SEARCH TAB
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.search),
-              label: "Search",
+                // Special Middle Button
+                _buildMiddleNavBarItem(
+                  2,
+                  _showMyPosts ? Icons.add_rounded : Icons.assignment_rounded,
+                  _showMyPosts ? "Post" : "Applied",
+                ),
+
+                _buildNavBarItem(3, Icons.chat_bubble_rounded, "Chat"),
+                _buildNavBarItem(4, Icons.person_rounded, "Profile"),
+              ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
 
-            // 2. DYNAMIC TAB
-            BottomNavigationBarItem(
-              icon: Icon(_showMyPosts ? Icons.add_circle : Icons.assignment),
-              label: _showMyPosts ? "Post" : "Applied",
+  // ---------------------------------------------------------
+  // UI HELPER: Standard Nav Item
+  // ---------------------------------------------------------
+  Widget _buildNavBarItem(int index, IconData icon, String label) {
+    final isSelected = _selectedIndex == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _onTabTapped(index),
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              // Subtle scale effect when active
+              transform: Matrix4.identity()..scale(isSelected ? 1.1 : 1.0),
+              child: Icon(
+                icon,
+                color: isSelected ? const Color(0xFF2E7EFF) : Colors.grey[400],
+                size: 26,
+              ),
             ),
-
-            // 3. MESSAGES TAB
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.message),
-              label: "Messages",
-            ),
-
-            // 4. PROFILE TAB
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.person),
-              label: "Profile",
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? const Color(0xFF2E7EFF) : Colors.grey,
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.normal,
+              ),
             ),
           ],
         ),
@@ -150,8 +177,65 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // ... (The rest of your existing code: _buildHomeWithHeader, _getBodyContent, etc.) ...
-  // ... Paste the rest of your helper widgets below exactly as they were ...
+  // ---------------------------------------------------------
+  // UI HELPER: Middle "Epic" Button
+  // ---------------------------------------------------------
+  Widget _buildMiddleNavBarItem(int index, IconData icon, String label) {
+    final isSelected = _selectedIndex == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _onTabTapped(index),
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Gradient Circle Background
+            Container(
+              height: 38,
+              width: 38,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: isSelected
+                      ? [
+                          const Color(0xFF2E7EFF),
+                          const Color(0xFF9C27B0),
+                        ] // Active: Full color
+                      : [
+                          const Color(0xFF2E7EFF).withOpacity(0.8),
+                          const Color(0xFF9C27B0).withOpacity(0.8),
+                        ], // Inactive: Slightly dimmed
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF2E7EFF).withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(icon, color: Colors.white, size: 22),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                // Use gradient colors for text if selected
+                color: isSelected ? const Color(0xFF9C27B0) : Colors.grey,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ... (The rest of your code remains UNCHANGED) ...
+  // ... Paste the existing _buildHomeWithHeader, _getBodyContent, etc. below ...
 
   Widget _buildHomeWithHeader() {
     final user = FirebaseAuth.instance.currentUser;
