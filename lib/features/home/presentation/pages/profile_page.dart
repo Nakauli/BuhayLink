@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart'; // Needed for PlatformException
 import '../../data/repositories/profile_repository.dart';
+import 'create_resume_page.dart'; // IMPORT THE NEW RESUME PAGE
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -382,6 +383,7 @@ class _ProfilePageState extends State<ProfilePage> {
           String about = data['about'] ?? "No bio available.";
           String location = data['location'] ?? "No location set";
           List<dynamic> skills = data['skills'] ?? [];
+          bool hasResume = data['hasResume'] == true; // Check if resume exists
 
           double rawRating = (data['rating'] is num)
               ? (data['rating'] as num).toDouble()
@@ -557,7 +559,46 @@ class _ProfilePageState extends State<ProfilePage> {
                       email,
                       style: TextStyle(color: Colors.grey[600], fontSize: 14),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12), // Spacing for button
+                    // --- NEW RESUME BUTTON ---
+                    SizedBox(
+                      width: 200,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const CreateResumePage(),
+                            ),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2E7EFF),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                          elevation: 4,
+                        ),
+                        icon: Icon(
+                          hasResume ? Icons.edit_document : Icons.add_circle,
+                          color: Colors.white,
+                        ),
+                        label: Text(
+                          hasResume ? "Edit Resume" : "Create Resume",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
