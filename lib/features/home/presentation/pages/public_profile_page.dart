@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 // SOLID: Import Repositories
 import '../../../jobs/data/repositories/job_repository.dart';
 import '../../../jobs/data/repositories/chat_repository.dart';
-import 'hired_jobs_page.dart';
 
 class PublicProfilePage extends StatefulWidget {
   final String userId;

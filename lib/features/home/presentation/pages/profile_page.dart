@@ -384,7 +384,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
           // --- NEW: VERIFICATION & RESUME LOGIC ---
           bool hasResume = data['hasResume'] == true;
-          bool isVerified = data['isVerified'] == true; // Check database field
+          bool isVerified = data['isVerified'] == true;
           final Map<String, dynamic>? resumeData = hasResume
               ? (data['resume'] as Map<String, dynamic>?)
               : null;
@@ -400,75 +400,33 @@ class _ProfilePageState extends State<ProfilePage> {
             padding: const EdgeInsets.only(bottom: 40),
             child: Column(
               children: [
-                // 1. EPIC HEADER SECTION
+                // 1. CLEANER, SHORTER HEADER
                 SizedBox(
-                  height: 350,
+                  height: 240, // Reduced from 350
                   child: Stack(
                     alignment: Alignment.topCenter,
                     clipBehavior: Clip.none,
                     children: [
-                      // A. Main Gradient
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        height: 280,
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
-                            ),
-                            borderRadius: BorderRadius.only(
-                              bottomLeft: Radius.circular(40),
-                              bottomRight: Radius.circular(40),
-                            ),
+                      // A. Main Gradient (Clean, no circles)
+                      Container(
+                        height: 160, // Shorter gradient background
+                        width: double.infinity,
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
+                          ),
+                          borderRadius: BorderRadius.only(
+                            bottomLeft: Radius.circular(30),
+                            bottomRight: Radius.circular(30),
                           ),
                         ),
                       ),
 
-                      // B. Abstract Circles
+                      // B. Profile Image (Positioned to overlap)
                       Positioned(
-                        top: -60,
-                        left: -40,
-                        child: Container(
-                          height: 200,
-                          width: 200,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.1),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: 80,
-                        right: -30,
-                        child: Container(
-                          height: 150,
-                          width: 150,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.1),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: 200,
-                        left: 30,
-                        child: Container(
-                          height: 80,
-                          width: 80,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.08),
-                          ),
-                        ),
-                      ),
-
-                      // C. Profile Image
-                      Positioned(
-                        top: 210,
+                        top: 95, // 160 (gradient height) - 65 (radius) = 95
                         child: Stack(
                           alignment: Alignment.bottomRight,
                           clipBehavior: Clip.none,
@@ -482,9 +440,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.2),
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 10),
+                                    color: Colors.black.withOpacity(0.15),
+                                    blurRadius: 15,
+                                    offset: const Offset(0, 8),
                                   ),
                                 ],
                               ),
@@ -529,8 +487,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
 
-                const SizedBox(height: 30),
-
+                const SizedBox(height: 10), // Reduced spacing
                 // 2. USER INFO
                 Column(
                   children: [
@@ -563,7 +520,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       email,
                       style: TextStyle(color: Colors.grey[600], fontSize: 14),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
 
                     // --- NEW RESUME BUTTON ---
                     SizedBox(
@@ -605,7 +562,6 @@ class _ProfilePageState extends State<ProfilePage> {
                     const SizedBox(height: 12),
 
                     // --- DYNAMIC VERIFIED BADGE ---
-                    // Only show this if isVerified is true in the database
                     if (isVerified)
                       Container(
                         padding: const EdgeInsets.symmetric(

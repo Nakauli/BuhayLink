@@ -21,71 +21,158 @@ class _MessagesPageState extends State<MessagesPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB), // Modern light grey background
-      appBar: AppBar(
-        title: const Text("Messages", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 22)),
-        backgroundColor: Colors.white,
-        elevation: 0.5,
-        automaticallyImplyLeading: false,
-      ),
-      body: _currentUserId.isEmpty
-          ? const Center(child: Text("Please login to see messages"))
-          : StreamBuilder<QuerySnapshot>(
-              stream: _chatRepository.getAllChatRoomsStream(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.chat_bubble_outline_rounded, size: 80, color: Colors.grey[300]),
-                        const SizedBox(height: 16),
-                        Text("No conversations yet", style: TextStyle(color: Colors.grey[600], fontSize: 16)),
-                      ],
-                    ),
-                  );
-                }
-
-                final chatRooms = snapshot.data!.docs;
-
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: chatRooms.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 12), // Spacing between cards
-                  itemBuilder: (context, index) {
-                    final chatDoc = chatRooms[index];
-                    final chatData = chatDoc.data() as Map<String, dynamic>;
-                    final List users = chatData['users'] ?? [];
-                    
-                    // Identify the other person in the chat
-                    final String receiverId = users.firstWhere((id) => id != _currentUserId, orElse: () => "");
-
-                    if (receiverId.isEmpty) return const SizedBox.shrink();
-
-                    // Build the modern chat tile
-                    return _buildChatTile(chatData, receiverId);
-                  },
-                );
-              },
+      // Removed standard AppBar to use custom Gradient Header
+      body: Column(
+        children: [
+          // --- 1. EPIC GRADIENT HEADER ---
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.only(
+              top: 60,
+              left: 24,
+              right: 24,
+              bottom: 30,
             ),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(30),
+                bottomRight: Radius.circular(30),
+              ),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Messages",
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  "Your active conversations",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // --- 2. CHAT LIST ---
+          Expanded(
+            child: _currentUserId.isEmpty
+                ? const Center(child: Text("Please login to see messages"))
+                : StreamBuilder<QuerySnapshot>(
+                    stream: _chatRepository.getAllChatRoomsStream(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(24),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.05),
+                                      blurRadius: 15,
+                                      offset: const Offset(0, 5),
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  Icons.chat_bubble_outline_rounded,
+                                  size: 60,
+                                  color: Colors.grey[300],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                "No conversations yet",
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      final chatRooms = snapshot.data!.docs;
+
+                      return ListView.separated(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 20,
+                        ),
+                        itemCount: chatRooms.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 12), // Spacing between cards
+                        itemBuilder: (context, index) {
+                          final chatDoc = chatRooms[index];
+                          final chatData =
+                              chatDoc.data() as Map<String, dynamic>;
+                          final List users = chatData['users'] ?? [];
+
+                          // Identify the other person in the chat
+                          final String receiverId = users.firstWhere(
+                            (id) => id != _currentUserId,
+                            orElse: () => "",
+                          );
+
+                          if (receiverId.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+
+                          // Build the modern chat tile
+                          return _buildChatTile(chatData, receiverId);
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildChatTile(Map<String, dynamic> chatData, String receiverId) {
     // SOLID: Use repository to fetch the other user's profile
     return StreamBuilder<DocumentSnapshot>(
-      stream: _chatRepository.getUserProfileStream(receiverId),
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(receiverId)
+          .snapshots(),
       builder: (context, userSnapshot) {
         String name = "User";
-        String? profileImageUrl;
-        
+        String photoUrl = "";
+        bool isVerified = false;
+
         if (userSnapshot.hasData && userSnapshot.data!.exists) {
           final userData = userSnapshot.data!.data() as Map<String, dynamic>;
-          name = userData['fullName'] ?? userData['firstName'] ?? userData['username'] ?? "User";
-          profileImageUrl = userData['profileImageUrl'];
+          // Correctly fetch name and photo based on schema
+          name = userData['name'] ?? userData['fullName'] ?? "User";
+          photoUrl = userData['photoUrl'] ?? "";
+          isVerified = userData['isVerified'] == true;
         }
 
         final String lastMessage = chatData['lastMessage'] ?? "No messages yet";
@@ -98,7 +185,7 @@ class _MessagesPageState extends State<MessagesPage> {
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withOpacity(0.03),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -124,16 +211,42 @@ class _MessagesPageState extends State<MessagesPage> {
                 child: Row(
                   children: [
                     // Avatar with image or initials
-                    CircleAvatar(
-                      radius: 28,
-                      backgroundColor: Colors.blue[50],
-                      backgroundImage: profileImageUrl != null ? NetworkImage(profileImageUrl) : null,
-                      child: profileImageUrl == null
-                          ? Text(
-                              name.isNotEmpty ? name[0].toUpperCase() : "?",
-                              style: TextStyle(color: Colors.blue[700], fontWeight: FontWeight.bold, fontSize: 20),
-                            )
-                          : null,
+                    Stack(
+                      children: [
+                        CircleAvatar(
+                          radius: 28,
+                          backgroundColor: Colors.blue[50],
+                          backgroundImage: photoUrl.isNotEmpty
+                              ? NetworkImage(photoUrl)
+                              : null,
+                          child: photoUrl.isEmpty
+                              ? Text(
+                                  name.isNotEmpty ? name[0].toUpperCase() : "?",
+                                  style: TextStyle(
+                                    color: Colors.blue[700],
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 20,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        if (isVerified)
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.verified,
+                                color: Colors.green,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(width: 16),
                     // Name, Message, and Time
@@ -147,23 +260,35 @@ class _MessagesPageState extends State<MessagesPage> {
                               Expanded(
                                 child: Text(
                                   name,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: Colors.black87,
+                                  ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               Text(
                                 timeString,
-                                style: TextStyle(color: Colors.grey[500], fontSize: 12, fontWeight: FontWeight.w500),
+                                style: TextStyle(
+                                  color: Colors.grey[400],
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 6),
                           Text(
                             lastMessage,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                              height: 1.2,
+                            ),
                           ),
                         ],
                       ),
@@ -184,9 +309,13 @@ class _MessagesPageState extends State<MessagesPage> {
     final DateTime date = timestamp.toDate();
     final DateTime now = DateTime.now();
 
-    if (date.year == now.year && date.month == now.month && date.day == now.day) {
+    if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day) {
       // Today: Show time (e.g., 10:30 AM)
-      String hour = date.hour > 12 ? (date.hour - 12).toString() : (date.hour == 0 ? "12" : date.hour.toString());
+      String hour = date.hour > 12
+          ? (date.hour - 12).toString()
+          : (date.hour == 0 ? "12" : date.hour.toString());
       String minute = date.minute.toString().padLeft(2, '0');
       String period = date.hour < 12 ? "AM" : "PM";
       return "$hour:$minute $period";
