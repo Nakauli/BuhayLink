@@ -127,18 +127,15 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor:
+          Colors.grey[50], // Match the grey background of ProfilePage
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: const BackButton(color: Colors.black),
-        title: Text(
-          widget.userName,
-          style: const TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        leading: const BackButton(
+          color: Colors.white,
+        ), // White arrow for gradient
       ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: _jobRepository.getUserProfileStream(widget.userId),
@@ -171,142 +168,332 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
               data['description'] ??
               "No about info provided.";
 
-          // --- SKILLS ---
+          // Verification Status
+          final bool isVerified = data['isVerified'] == true;
+
           List<dynamic> skills = [];
           if (data['skills'] is List) {
             skills = data['skills'];
           }
 
-          // --- RATING DATA (FIXED) ---
-          // Safely convert any number type (int or double) to double
           double rating = (data['rating'] is num)
               ? (data['rating'] as num).toDouble()
               : 0.0;
 
-          int reviewCount = (data['reviewCount'] is num)
-              ? (data['reviewCount'] as num).toInt()
-              : 0;
+          // Resume Data Logic
+          final bool hasResume = data['hasResume'] == true;
+          final Map<String, dynamic>? resumeData = hasResume
+              ? (data['resume'] as Map<String, dynamic>?)
+              : null;
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.only(
+              bottom: 100,
+            ), // Extra space for content
             child: Column(
               children: [
-                _buildAvatar(name, photoUrl),
+                // 1. EPIC HEADER SECTION (Matches ProfilePage)
+                SizedBox(
+                  height: 300,
+                  child: Stack(
+                    alignment: Alignment.topCenter,
+                    clipBehavior: Clip.none,
+                    children: [
+                      // Gradient Background
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: 250,
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
+                            ),
+                            borderRadius: BorderRadius.only(
+                              bottomLeft: Radius.circular(40),
+                              bottomRight: Radius.circular(40),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Decorative Shapes
+                      Positioned(
+                        top: -60,
+                        left: -40,
+                        child: Container(
+                          height: 200,
+                          width: 200,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.1),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 80,
+                        right: -30,
+                        child: Container(
+                          height: 150,
+                          width: 150,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.1),
+                          ),
+                        ),
+                      ),
+                      // Floating Avatar
+                      Positioned(
+                        top: 170,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 4),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: CircleAvatar(
+                            radius: 60,
+                            backgroundColor: Colors.white,
+                            backgroundImage: photoUrl.isNotEmpty
+                                ? NetworkImage(photoUrl)
+                                : null,
+                            child: photoUrl.isEmpty
+                                ? Text(
+                                    name.isNotEmpty
+                                        ? name[0].toUpperCase()
+                                        : "U",
+                                    style: const TextStyle(
+                                      fontSize: 40,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 10), // Shadow spacing
+                // 2. NAME & LOCATION
                 Text(
                   name,
                   style: const TextStyle(
-                    fontSize: 24,
+                    fontSize: 26,
                     fontWeight: FontWeight.bold,
+                    color: Colors.black87,
                   ),
                 ),
-                Text(location, style: TextStyle(color: Colors.grey[600])),
+                Text(
+                  location,
+                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                ),
+                const SizedBox(height: 12),
 
-                // --- ADDED: VISUAL STAR RATING ROW ---
-                const SizedBox(height: 8),
-                if (reviewCount > 0)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.star, color: Colors.amber, size: 20),
-                      const SizedBox(width: 4),
-                      Text(
-                        rating.toStringAsFixed(1),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                // DYNAMIC VERIFIED BADGE
+                if (isVerified)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.green.withOpacity(0.2)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.verified, color: Colors.green, size: 16),
+                        SizedBox(width: 4),
+                        Text(
+                          "Verified User",
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
                         ),
+                      ],
+                    ),
+                  ),
+
+                const SizedBox(height: 24),
+
+                // 3. STATS ROW
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildStatItem(
+                        "Rating",
+                        rating.toStringAsFixed(1),
+                        Icons.star_rounded,
+                        Colors.amber,
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        "($reviewCount reviews)",
-                        style: TextStyle(color: Colors.grey[600]),
+                      _buildVerticalDivider(),
+                      _buildStatItem(
+                        "Applied",
+                        data['appliedCount']?.toString() ?? "0",
+                        Icons.work_rounded,
+                        Colors.blue,
+                      ),
+                      _buildVerticalDivider(),
+                      _buildStatItem(
+                        "Hired",
+                        data['hiredCompleted']?.toString() ?? "0",
+                        Icons.handshake_rounded,
+                        Colors.green,
                       ),
                     ],
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+
+                // 4. ACTION BUTTONS (Hire/Reject/Contact)
+                if (_decisionStatus != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: _buildDecisionBanner(),
                   )
                 else
-                  Text(
-                    "No ratings yet",
-                    style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                  ),
-
-                // -------------------------------------
-                const SizedBox(height: 24),
-                _buildTrustBadges(),
-
-                const SizedBox(height: 32),
-                _buildStatsRow(data, rating), // Pass the fixed rating
-
-                const SizedBox(height: 32),
-                const Divider(),
-                const SizedBox(height: 24),
-
-                _buildAboutSection(about),
-
-                const SizedBox(height: 24),
-
-                if (skills.isNotEmpty) ...[
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      "Skills",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: skills
-                        .map(
-                          (s) => Chip(
-                            label: Text(s.toString()),
-                            backgroundColor: Colors.blue[50],
-                            labelStyle: TextStyle(color: Colors.blue[800]),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      children: [
+                        // Only show Hire/Reject if viewing as an applicant (jobId exists)
+                        if (widget.jobId != null) ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: _isLoading ? null : _handleReject,
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    side: const BorderSide(
+                                      color: Colors.redAccent,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    "Reject",
+                                    style: TextStyle(color: Colors.redAccent),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: _isLoading ? null : _handleHire,
+                                  style: ElevatedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    backgroundColor: Colors.green,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Text(
+                                          "Hire Now",
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ],
                           ),
-                        )
-                        .toList(),
-                  ),
-                  const SizedBox(height: 40),
-                ],
-
-                // --- INSERTED REVIEWS LIST HERE ---
-                const Divider(),
-                const SizedBox(height: 24),
-                _buildReviewsList(),
-                const SizedBox(height: 40),
-
-                // ----------------------------------
-                if (_decisionStatus != null)
-                  _buildDecisionBanner()
-                else if (widget.jobId != null)
-                  _buildActionButtons(),
-
-                const SizedBox(height: 16),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      _chatRepository.startChat(
-                        context,
-                        widget.userId,
-                        name,
-                        photoUrl,
-                      );
-                    },
-                    icon: const Icon(Icons.message_outlined),
-                    label: const Text("Contact"),
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                          const SizedBox(height: 12),
+                        ],
+                        // Contact Button (Always visible)
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              _chatRepository.startChat(
+                                context,
+                                widget.userId,
+                                name,
+                                photoUrl,
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2E7EFF),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: const Icon(
+                              Icons.chat_bubble_outline,
+                              color: Colors.white,
+                            ),
+                            label: const Text(
+                              "Send Message",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
+
+                const SizedBox(height: 30),
+
+                // 5. INFO SECTION
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    children: [
+                      // Resume Section (Only if Resume exists)
+                      if (hasResume && resumeData != null) ...[
+                        _buildResumeCard(resumeData),
+                        const SizedBox(height: 16),
+                      ],
+
+                      _buildInfoCard(
+                        "About",
+                        about,
+                        Icons.person_outline,
+                        Colors.orange,
+                      ),
+
+                      if (skills.isNotEmpty) _buildSkillsCard(skills),
+
+                      const SizedBox(height: 16),
+                      _buildReviewsList(),
+                    ],
                   ),
                 ),
               ],
@@ -317,114 +504,257 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     );
   }
 
-  // --- UI HELPER WIDGETS ---
+  // --- WIDGET HELPERS ---
 
-  Widget _buildAvatar(String name, String photoUrl) {
-    return Stack(
-      alignment: Alignment.bottomRight,
-      children: [
-        CircleAvatar(
-          radius: 55,
-          backgroundColor: Colors.blue[100],
-          backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
-          child: photoUrl.isEmpty
-              ? Text(
-                  name.isNotEmpty ? name[0].toUpperCase() : "U",
-                  style: const TextStyle(
-                    color: Colors.blue,
-                    fontSize: 45,
-                    fontWeight: FontWeight.bold,
-                  ),
-                )
-              : null,
-        ),
-        const Icon(Icons.verified, color: Colors.blue, size: 28),
-      ],
-    );
-  }
+  Widget _buildResumeCard(Map<String, dynamic> resume) {
+    List<dynamic> experience = resume['experience'] ?? [];
+    List<dynamic> education = resume['education'] ?? [];
+    String summary = resume['summary'] ?? "No summary provided.";
 
-  Widget _buildTrustBadges() {
     return Container(
-      padding: const EdgeInsets.all(12),
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.green[50],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.verified_user, color: Colors.green, size: 20),
-          SizedBox(width: 8),
-          Text(
-            "Verified Professional",
-            style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.08),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
           ),
         ],
-      ),
-    );
-  }
-
-  // Updated to accept the parsed rating double
-  Widget _buildStatsRow(Map<String, dynamic> data, double rating) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        _buildStatItem(data['appliedCount']?.toString() ?? "0", "Applied"),
-        _buildStatItem(
-          data['hiredCompleted']?.toString() ?? "0",
-          "Hired",
-          isClickable: true,
+        border: Border.all(
+          color: const Color(0xFF2E7EFF).withOpacity(0.2),
+          width: 1.5,
         ),
-        // Format rating to 1 decimal place (e.g. "4.5")
-        _buildStatItem(rating.toStringAsFixed(1), "Rating"),
-      ],
-    );
-  }
-
-  Widget _buildStatItem(
-    String value,
-    String label, {
-    bool isClickable = false,
-  }) {
-    return InkWell(
-      onTap: isClickable
-          ? () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => HiredJobsPage(userId: widget.userId),
-              ),
-            )
-          : null,
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        ],
       ),
-    );
-  }
-
-  Widget _buildAboutSection(String bio) {
-    return Align(
-      alignment: Alignment.centerLeft,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "About",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          const Row(
+            children: [
+              Icon(Icons.description, color: Color(0xFF2E7EFF)),
+              SizedBox(width: 8),
+              Text(
+                "Resume Highlights",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Text(bio, style: const TextStyle(height: 1.5, color: Colors.black87)),
+          const Divider(height: 24),
+
+          Text(summary, style: TextStyle(color: Colors.grey[700], height: 1.4)),
+          const SizedBox(height: 16),
+
+          if (experience.isNotEmpty) ...[
+            const Text(
+              "Experience",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...experience
+                .take(2)
+                .map(
+                  (exp) => Padding(
+                    // Show only top 2
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.circle, size: 6, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text.rich(
+                            TextSpan(
+                              text: "${exp['title']} ",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: "at ${exp['company']}",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.normal,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          ],
+
+          if (education.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Text(
+              "Education",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...education
+                .take(1)
+                .map(
+                  (edu) => Row(
+                    // Show only top 1
+                    children: [
+                      const Icon(Icons.school, size: 16, color: Colors.grey),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "${edu['degree']} - ${edu['school']}",
+                          style: TextStyle(color: Colors.grey[700]),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+          ],
         ],
       ),
     );
   }
 
-  // --- NEW: REVIEWS LIST WIDGET ---
+  Widget _buildInfoCard(
+    String title,
+    String content,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.08),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(content, style: TextStyle(color: Colors.grey[700], height: 1.5)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkillsCard(List<dynamic> skills) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.08),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.purple.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.star_rounded,
+                  color: Colors.purple,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                "Skills",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: skills
+                .map(
+                  (s) => Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2E7EFF).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFF2E7EFF).withOpacity(0.2),
+                      ),
+                    ),
+                    child: Text(
+                      s.toString(),
+                      style: const TextStyle(
+                        color: Color(0xFF2E7EFF),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildReviewsList() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -440,57 +770,34 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
               .doc(widget.userId)
               .collection('ratings')
               .orderBy('timestamp', descending: true)
-              .limit(5) // Show last 5 reviews
+              .limit(3)
               .snapshots(),
           builder: (context, snapshot) {
-            if (snapshot.hasError) return const Text("Could not load reviews.");
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            final docs = snapshot.data?.docs ?? [];
-            if (docs.isEmpty) {
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
               return Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.grey[50],
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200),
                 ),
-                child: Row(
-                  children: [
-                    Icon(Icons.rate_review_outlined, color: Colors.grey[400]),
-                    const SizedBox(width: 12),
-                    Text(
-                      "No reviews yet.",
-                      style: TextStyle(color: Colors.grey[500]),
-                    ),
-                  ],
+                child: Center(
+                  child: Text(
+                    "No reviews yet.",
+                    style: TextStyle(color: Colors.grey[500]),
+                  ),
                 ),
               );
             }
 
             return Column(
-              children: docs.map((doc) {
+              children: snapshot.data!.docs.map((doc) {
                 final data = doc.data() as Map<String, dynamic>;
-                final double rating = (data['rating'] ?? 0.0).toDouble();
-                final String review = data['review'] ?? "";
-                final String raterName = data['raterName'] ?? "Anonymous";
-                final String raterPhoto = data['raterPhoto'] ?? "";
-                final Timestamp? time = data['timestamp'];
-
-                // Format Date
-                String dateStr = "";
-                if (time != null) {
-                  final dt = time.toDate();
-                  dateStr = "${dt.month}/${dt.day}/${dt.year}";
-                }
-
                 return Container(
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    border: Border.all(color: Colors.grey.shade200),
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
@@ -503,94 +810,36 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Header: Avatar, Name, Date
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          CircleAvatar(
-                            radius: 16,
-                            backgroundImage: raterPhoto.isNotEmpty
-                                ? NetworkImage(raterPhoto)
-                                : null,
-                            child: raterPhoto.isEmpty
-                                ? Text(
-                                    raterName.isNotEmpty
-                                        ? raterName[0].toUpperCase()
-                                        : "U",
-                                  )
-                                : null,
+                          Text(
+                            data['raterName'] ?? "Anonymous",
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  raterName,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.star,
+                                size: 14,
+                                color: Colors.amber,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                (data['rating'] ?? 0.0).toString(),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
                                 ),
-                                Text(
-                                  dateStr,
-                                  style: TextStyle(
-                                    color: Colors.grey[500],
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Star Display
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.amber[50],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.star,
-                                  size: 14,
-                                  color: Colors.amber,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  rating.toStringAsFixed(1),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.amber[900],
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
-                      // Review Text
-                      if (review.isNotEmpty)
-                        Text(
-                          review,
-                          style: TextStyle(
-                            color: Colors.grey[800],
-                            height: 1.4,
-                          ),
-                        )
-                      else
-                        Text(
-                          "No written review.",
-                          style: TextStyle(
-                            color: Colors.grey[400],
-                            fontStyle: FontStyle.italic,
-                            fontSize: 12,
-                          ),
-                        ),
+                      const SizedBox(height: 6),
+                      Text(
+                        data['review'] ?? "",
+                        style: TextStyle(color: Colors.grey[700]),
+                      ),
                     ],
                   ),
                 );
@@ -602,12 +851,45 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     );
   }
 
+  Widget _buildStatItem(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 24),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[500],
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVerticalDivider() {
+    return Container(height: 30, width: 1, color: Colors.grey[300]);
+  }
+
   Widget _buildDecisionBanner() {
     bool isHired = _decisionStatus == 'hired';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: isHired ? Colors.green[50] : Colors.red[50],
         borderRadius: BorderRadius.circular(12),
@@ -621,53 +903,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
             fontWeight: FontWeight.bold,
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildActionButtons() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton(
-              onPressed: _isLoading ? null : _handleReject,
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Colors.red),
-                foregroundColor: Colors.red,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text("Reject"),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _handleHire,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : const Text("Hire"),
-            ),
-          ),
-        ],
       ),
     );
   }
