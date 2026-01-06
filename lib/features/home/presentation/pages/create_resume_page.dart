@@ -12,6 +12,7 @@ class CreateResumePage extends StatefulWidget {
 
 class _CreateResumePageState extends State<CreateResumePage> {
   final _formKey = GlobalKey<FormState>();
+  // ignore: unused_field
   final _repository = ProfileRepository();
   bool _isLoading = false;
 
@@ -141,8 +142,6 @@ class _CreateResumePageState extends State<CreateResumePage> {
         "updatedAt": DateTime.now().toIso8601String(),
       };
 
-      // Save to Firebase (You need to add this method to your repository or call Firestore directly)
-      // Since I cannot edit your repo file directly here, I will use direct Firestore call for safety
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
         await FirebaseFirestore.instance.collection('users').doc(uid).update({
@@ -178,210 +177,311 @@ class _CreateResumePageState extends State<CreateResumePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text(
           "Build Your Resume",
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: Colors.black,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSectionTitle("Professional Summary"),
-              _buildTextField(
-                controller: _summaryController,
-                hint: "Write a short bio about your professional self...",
-                maxLines: 4,
-              ),
-              const SizedBox(height: 20),
-
-              _buildSectionTitle("Contact Info"),
-              _buildTextField(
-                controller: _phoneController,
-                hint: "Phone Number",
-                icon: Icons.phone,
-              ),
-              const SizedBox(height: 10),
-              _buildTextField(
-                controller: _linkedinController,
-                hint: "LinkedIn / Portfolio URL",
-                icon: Icons.link,
-              ),
-              const SizedBox(height: 30),
-
-              // --- EXPERIENCE SECTION ---
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _buildSectionTitle("Experience"),
-                  IconButton(
-                    onPressed: () => _addExperienceField(),
-                    icon: const Icon(
-                      Icons.add_circle,
-                      color: Color(0xFF2E7EFF),
-                    ),
-                  ),
-                ],
-              ),
-              ..._experienceControllers.asMap().entries.map((entry) {
-                int idx = entry.key;
-                var controllers = entry.value;
-                return _buildCardItem(
-                  idx,
-                  onRemove: () => _removeExperienceField(idx),
-                  children: [
-                    _buildTextField(
-                      controller: controllers["title"]!,
-                      hint: "Job Title",
-                    ),
-                    const SizedBox(height: 8),
-                    _buildTextField(
-                      controller: controllers["company"]!,
-                      hint: "Company Name",
-                    ),
-                    const SizedBox(height: 8),
-                    _buildTextField(
-                      controller: controllers["year"]!,
-                      hint: "Years (e.g. 2020 - 2022)",
-                    ),
-                  ],
-                );
-              }),
-
-              const SizedBox(height: 20),
-
-              // --- EDUCATION SECTION ---
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _buildSectionTitle("Education"),
-                  IconButton(
-                    onPressed: () => _addEducationField(),
-                    icon: const Icon(
-                      Icons.add_circle,
-                      color: Color(0xFF2E7EFF),
-                    ),
-                  ),
-                ],
-              ),
-              ..._educationControllers.asMap().entries.map((entry) {
-                int idx = entry.key;
-                var controllers = entry.value;
-                return _buildCardItem(
-                  idx,
-                  onRemove: () => _removeEducationField(idx),
-                  children: [
-                    _buildTextField(
-                      controller: controllers["school"]!,
-                      hint: "School / University",
-                    ),
-                    const SizedBox(height: 8),
-                    _buildTextField(
-                      controller: controllers["degree"]!,
-                      hint: "Degree / Course",
-                    ),
-                    const SizedBox(height: 8),
-                    _buildTextField(
-                      controller: controllers["year"]!,
-                      hint: "Year Graduated",
-                    ),
-                  ],
-                );
-              }),
-
-              const SizedBox(height: 40),
-              SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _saveResume,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2E7EFF),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 5,
-                  ),
-                  child: _isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text(
-                          "Save Resume",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+      body: Stack(
+        children: [
+          // 1. BACKGROUND GRADIENT HEADER
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 250,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
+                ),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(30),
+                  bottomRight: Radius.circular(30),
                 ),
               ),
-              const SizedBox(height: 30),
+            ),
+          ),
+
+          // 2. FORM CONTENT
+          SafeArea(
+            child: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
+                child: Column(
+                  children: [
+                    const Text(
+                      "Craft your professional profile to stand out.",
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // --- SECTION A: PERSONAL INFO ---
+                    _buildCardContainer(
+                      title: "Personal Info",
+                      icon: Icons.person,
+                      color: Colors.orange,
+                      children: [
+                        _buildModernTextField(
+                          controller: _summaryController,
+                          label: "Professional Summary",
+                          hint: "Write a short bio...",
+                          icon: Icons.description_outlined,
+                          maxLines: 4,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildModernTextField(
+                          controller: _phoneController,
+                          label: "Phone Number",
+                          hint: "+63 912 345 6789",
+                          icon: Icons.phone_android_rounded,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildModernTextField(
+                          controller: _linkedinController,
+                          label: "Portfolio / LinkedIn",
+                          hint: "https://linkedin.com/in/you",
+                          icon: Icons.link_rounded,
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // --- SECTION B: EXPERIENCE ---
+                    _buildSectionHeader("Experience", Icons.work_rounded),
+                    ..._experienceControllers.asMap().entries.map((entry) {
+                      int idx = entry.key;
+                      var controllers = entry.value;
+                      return _buildDismissibleCard(
+                        idx,
+                        onRemove: () => _removeExperienceField(idx),
+                        children: [
+                          _buildModernTextField(
+                            controller: controllers["title"]!,
+                            label: "Job Title",
+                            hint: "e.g. Flutter Developer",
+                            icon: Icons.badge_outlined,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildModernTextField(
+                            controller: controllers["company"]!,
+                            label: "Company",
+                            hint: "e.g. Tech Solutions Inc.",
+                            icon: Icons.business_rounded,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildModernTextField(
+                            controller: controllers["year"]!,
+                            label: "Years Active",
+                            hint: "e.g. 2021 - Present",
+                            icon: Icons.calendar_today_rounded,
+                          ),
+                        ],
+                      );
+                    }),
+                    _buildAddButton(
+                      "Add Position",
+                      _addExperienceField,
+                      Colors.blue,
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // --- SECTION C: EDUCATION ---
+                    _buildSectionHeader("Education", Icons.school_rounded),
+                    ..._educationControllers.asMap().entries.map((entry) {
+                      int idx = entry.key;
+                      var controllers = entry.value;
+                      return _buildDismissibleCard(
+                        idx,
+                        onRemove: () => _removeEducationField(idx),
+                        children: [
+                          _buildModernTextField(
+                            controller: controllers["school"]!,
+                            label: "School / University",
+                            hint: "e.g. University of Santo Tomas",
+                            icon: Icons.account_balance_rounded,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildModernTextField(
+                            controller: controllers["degree"]!,
+                            label: "Degree / Course",
+                            hint: "e.g. BS Computer Science",
+                            icon: Icons.school_outlined,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildModernTextField(
+                            controller: controllers["year"]!,
+                            label: "Year Graduated",
+                            hint: "e.g. 2023",
+                            icon: Icons.calendar_today_rounded,
+                          ),
+                        ],
+                      );
+                    }),
+                    _buildAddButton(
+                      "Add Education",
+                      _addEducationField,
+                      Colors.purple,
+                    ),
+
+                    const SizedBox(height: 40),
+
+                    // --- SAVE BUTTON ---
+                    Container(
+                      width: double.infinity,
+                      height: 55,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF2E7EFF).withOpacity(0.4),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _saveResume,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: _isLoading
+                            ? const CircularProgressIndicator(
+                                color: Colors.white,
+                              )
+                            : const Text(
+                                "Save Resume",
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- WIDGET BUILDERS ---
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, left: 4),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.grey[700], size: 22),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[800],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCardContainer({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required List<Widget> children,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
             ],
           ),
-        ),
+          const SizedBox(height: 20),
+          ...children,
+        ],
       ),
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: Colors.black87,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String hint,
-    IconData? icon,
-    int maxLines = 1,
-  }) {
-    return TextFormField(
-      controller: controller,
-      maxLines: maxLines,
-      decoration: InputDecoration(
-        hintText: hint,
-        prefixIcon: icon != null ? Icon(icon, color: Colors.grey) : null,
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-      ),
-      validator: (val) => val != null && val.isEmpty ? "Required" : null,
-    );
-  }
-
-  Widget _buildCardItem(
+  Widget _buildDismissibleCard(
     int index, {
     required VoidCallback onRemove,
     required List<Widget> children,
   }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade100),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -390,16 +490,120 @@ class _CreateResumePageState extends State<CreateResumePage> {
             children: [
               InkWell(
                 onTap: onRemove,
-                child: const Icon(
-                  Icons.delete_outline,
-                  color: Colors.red,
-                  size: 20,
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.delete_outline, color: Colors.red, size: 16),
+                      SizedBox(width: 4),
+                      Text(
+                        "Remove",
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 10),
           ...children,
         ],
+      ),
+    );
+  }
+
+  Widget _buildModernTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    int maxLines = 1,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey[700],
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          maxLines: maxLines,
+          style: const TextStyle(fontWeight: FontWeight.w500),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
+            prefixIcon: Icon(icon, color: Colors.grey[400], size: 20),
+            filled: true,
+            fillColor: Colors.grey[50],
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: Colors.grey.shade200),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFF2E7EFF)),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.redAccent),
+            ),
+          ),
+          validator: (val) => val != null && val.isEmpty ? "Required" : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAddButton(String text, VoidCallback onTap, Color color) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.3), width: 1),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_circle_outline, color: color),
+            const SizedBox(width: 8),
+            Text(
+              text,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
