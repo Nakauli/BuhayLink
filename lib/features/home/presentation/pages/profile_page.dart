@@ -381,7 +381,13 @@ class _ProfilePageState extends State<ProfilePage> {
           String about = data['about'] ?? "No bio available.";
           String location = data['location'] ?? "No location set";
           List<dynamic> skills = data['skills'] ?? [];
-          bool hasResume = data['hasResume'] == true; // Check if resume exists
+
+          // --- NEW: VERIFICATION & RESUME LOGIC ---
+          bool hasResume = data['hasResume'] == true;
+          bool isVerified = data['isVerified'] == true; // Check database field
+          final Map<String, dynamic>? resumeData = hasResume
+              ? (data['resume'] as Map<String, dynamic>?)
+              : null;
 
           double rawRating = (data['rating'] is num)
               ? (data['rating'] as num).toDouble()
@@ -557,7 +563,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       email,
                       style: TextStyle(color: Colors.grey[600], fontSize: 14),
                     ),
-                    const SizedBox(height: 12), // Spacing for button
+                    const SizedBox(height: 12),
+
                     // --- NEW RESUME BUTTON ---
                     SizedBox(
                       width: 200,
@@ -594,6 +601,49 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       ),
                     ),
+
+                    const SizedBox(height: 12),
+
+                    // --- DYNAMIC VERIFIED BADGE ---
+                    // Only show this if isVerified is true in the database
+                    if (isVerified)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.green.shade400,
+                              Colors.green.shade700,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.green.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.verified, color: Colors.white, size: 16),
+                            SizedBox(width: 4),
+                            Text(
+                              "Verified Member",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
 
@@ -636,6 +686,12 @@ class _ProfilePageState extends State<ProfilePage> {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
                     children: [
+                      // --- NEW: RESUME CARD (Preview) ---
+                      if (hasResume && resumeData != null) ...[
+                        _buildResumeCard(resumeData),
+                        const SizedBox(height: 16),
+                      ],
+
                       _buildInfoCard(
                         "About Me",
                         about,
@@ -699,6 +755,70 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildResumeCard(Map<String, dynamic> resume) {
+    List<dynamic> experience = resume['experience'] ?? [];
+    String summary = resume['summary'] ?? "No summary provided.";
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.08),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+        border: Border.all(
+          color: const Color(0xFF2E7EFF).withOpacity(0.2),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.description, color: Color(0xFF2E7EFF)),
+              SizedBox(width: 8),
+              Text(
+                "Resume Highlights",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const Divider(height: 24),
+          Text(summary, style: TextStyle(color: Colors.grey[700], height: 1.4)),
+          const SizedBox(height: 12),
+          if (experience.isNotEmpty)
+            ...experience
+                .take(1)
+                .map(
+                  (exp) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.circle, size: 6, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            "${exp['title']} at ${exp['company']}",
+                            style: TextStyle(color: Colors.grey[800]),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+        ],
+      ),
     );
   }
 
