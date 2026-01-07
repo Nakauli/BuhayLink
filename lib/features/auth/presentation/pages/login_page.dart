@@ -111,217 +111,230 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-
-        // ✅ SMOOTH GRADIENT (NO HARD CUT)
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFF7F9FF), // soft white-blue (logo clarity)
-              Color(0xFFEAF0FF),
-              Color(0xFF2E7EFF), // brand blue
-              Color(0xFF9542FF), // brand purple
-            ],
-            stops: [0.0, 0.25, 0.65, 1.0],
-          ),
-        ),
-
-        child: SafeArea(
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                const SizedBox(height: 60),
-
-                // --- LOGO (CLEAN, EMPHASIZED) ---
-                Image.asset('assets/images/logo.png', width: 170),
-
-                const SizedBox(height: 40),
-
-                // --- FLOATING CARD ---
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 24),
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.12),
-                        blurRadius: 30,
-                        offset: const Offset(0, 18),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      // Tabs
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Row(
-                          children: [
-                            _buildTab("Login", true),
-                            _buildTab("Register", false),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      if (isLogin) ...[
-                        _buildTextField(
-                          _emailController,
-                          "Email Address",
-                          Icons.email_outlined,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildTextField(
-                          _passwordController,
-                          "Password",
-                          Icons.lock_outline,
-                          isPassword: true,
-                        ),
-                        const SizedBox(height: 12),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const ForgotPasswordPage(),
-                                ),
-                              );
-                            },
-                            child: const Text(
-                              "Forgot Password?",
-                              style: TextStyle(
-                                color: Color(0xFF2E7EFF),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ] else ...[
-                        _buildTextField(
-                          _fullNameController,
-                          "Full Name",
-                          Icons.person_outline,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildTextField(
-                          _emailController,
-                          "Email Address",
-                          Icons.email_outlined,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildTextField(
-                          _phoneController,
-                          "Mobile Number",
-                          Icons.phone_outlined,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildTextField(
-                          _passwordController,
-                          "Password",
-                          Icons.lock_outline,
-                          isPassword: true,
-                        ),
-                      ],
-
-                      const SizedBox(height: 24),
-
-                      // Main button
-                      Container(
-                        width: double.infinity,
-                        height: 58,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF2E7EFF), Color(0xFF9542FF)],
-                          ),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: ElevatedButton(
-                          onPressed: isLoading ? null : _submitForm,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                          ),
-                          child: isLoading
-                              ? const CircularProgressIndicator(
-                                  color: Colors.white,
-                                )
-                              : Text(
-                                  isLogin ? "Login" : "Create Account",
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      Row(
-                        children: [
-                          Expanded(child: Divider(color: Colors.grey[300])),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 16),
-                            child: Text(
-                              "or continue with",
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ),
-                          Expanded(child: Divider(color: Colors.grey[300])),
-                        ],
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      OutlinedButton.icon(
-                        onPressed: isLoading ? null : _handleGoogleSignIn,
-                        icon: SvgPicture.asset(
-                          'assets/images/google_logo.svg',
-                          height: 24,
-                        ),
-                        label: const Text(
-                          "Google",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 52),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 40),
+    // 1. USE STACK: Layer the gradient BEHIND the Scaffold
+    return Stack(
+      children: [
+        // LAYER 1: The Background Gradient
+        // (This ignores the keyboard so it never squishes)
+        Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFFF7F9FF),
+                Color(0xFFEAF0FF),
+                Color(0xFF2E7EFF),
+                Color(0xFF9542FF),
               ],
+              stops: [0.0, 0.25, 0.65, 1.0],
             ),
           ),
         ),
-      ),
+
+        // LAYER 2: The Scaffold (Transparent)
+        Scaffold(
+          backgroundColor: Colors.transparent, // Let gradient show through
+          // 2. RESIZE: Allows the body to shrink when keyboard opens
+          resizeToAvoidBottomInset: true,
+          body: SafeArea(
+            // 3. SCROLL: This is the specific fix for "Bottom Overflowed"
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(
+                  bottom: 20,
+                ), // Extra padding for scrolling
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 40), // Reduced top spacing slightly
+                    // --- LOGO ---
+                    Image.asset('assets/images/logo.png', width: 170),
+
+                    const SizedBox(height: 40),
+
+                    // --- FLOATING CARD ---
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 24),
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(28),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.12),
+                            blurRadius: 30,
+                            offset: const Offset(0, 18),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          // Tabs
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              children: [
+                                _buildTab("Login", true),
+                                _buildTab("Register", false),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          if (isLogin) ...[
+                            _buildTextField(
+                              _emailController,
+                              "Email Address",
+                              Icons.email_outlined,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              _passwordController,
+                              "Password",
+                              Icons.lock_outline,
+                              isPassword: true,
+                            ),
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const ForgotPasswordPage(),
+                                    ),
+                                  );
+                                },
+                                child: const Text(
+                                  "Forgot Password?",
+                                  style: TextStyle(
+                                    color: Color(0xFF2E7EFF),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ] else ...[
+                            _buildTextField(
+                              _fullNameController,
+                              "Full Name",
+                              Icons.person_outline,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              _emailController,
+                              "Email Address",
+                              Icons.email_outlined,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              _phoneController,
+                              "Mobile Number",
+                              Icons.phone_outlined,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              _passwordController,
+                              "Password",
+                              Icons.lock_outline,
+                              isPassword: true,
+                            ),
+                          ],
+
+                          const SizedBox(height: 24),
+
+                          // Main button
+                          Container(
+                            width: double.infinity,
+                            height: 58,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF2E7EFF), Color(0xFF9542FF)],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: ElevatedButton(
+                              onPressed: isLoading ? null : _submitForm,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                              ),
+                              child: isLoading
+                                  ? const CircularProgressIndicator(
+                                      color: Colors.white,
+                                    )
+                                  : Text(
+                                      isLogin ? "Login" : "Create Account",
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          Row(
+                            children: [
+                              Expanded(child: Divider(color: Colors.grey[300])),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 16),
+                                child: Text(
+                                  "or continue with",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ),
+                              Expanded(child: Divider(color: Colors.grey[300])),
+                            ],
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          OutlinedButton.icon(
+                            onPressed: isLoading ? null : _handleGoogleSignIn,
+                            icon: SvgPicture.asset(
+                              'assets/images/google_logo.svg',
+                              height: 24,
+                            ),
+                            label: const Text(
+                              "Google",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 52),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

@@ -9,12 +9,18 @@ class PublicProfilePage extends StatefulWidget {
   final String? jobId;
   final String? jobTitle;
 
+  // 1. ADD THIS NEW PARAMETER
+  // If true, we force hide the skills section (perfect for Job Details view)
+  final bool isEmployerProfile;
+
   const PublicProfilePage({
     super.key,
     required this.userId,
     required this.userName,
     this.jobId,
     this.jobTitle,
+    this.isEmployerProfile =
+        false, // Defaults to false so it works normally for seekers
   });
 
   @override
@@ -132,6 +138,15 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 
           final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
 
+          // --- LOGIC TO HIDE SKILLS ---
+          // Check DB role field
+          final String role = data['role'] ?? 'user';
+          final bool dbSaysEmployer = role.toLowerCase() == 'employer';
+
+          // Combine: Hide if manually passed as TRUE, OR if DB says it's an employer
+          final bool shouldHideSkills =
+              widget.isEmployerProfile || dbSaysEmployer;
+
           final String name =
               data['name'] ??
               data['fullName'] ??
@@ -152,12 +167,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 
           final bool isVerified = data['isVerified'] == true;
 
-          // --- FIX: Strictly filter out empty or blank skills ---
           List<String> skills = [];
           if (data['skills'] is List) {
             skills = (data['skills'] as List)
-                .map((s) => s.toString().trim()) // Convert to string and trim
-                .where((s) => s.isNotEmpty) // Only keep non-empty strings
+                .map((s) => s.toString().trim())
+                .where((s) => s.isNotEmpty)
                 .toList();
           }
 
@@ -176,12 +190,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
               children: [
                 // 1. HEADER
                 SizedBox(
-                  height: 240, // Uniform short header
+                  height: 240,
                   child: Stack(
                     alignment: Alignment.topCenter,
                     clipBehavior: Clip.none,
                     children: [
-                      // A. Main Gradient
                       Container(
                         height: 160,
                         width: double.infinity,
@@ -197,7 +210,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                           ),
                         ),
                       ),
-                      // B. Overlapping Profile Picture
                       Positioned(
                         top: 95,
                         child: Container(
@@ -254,7 +266,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                 ),
                 const SizedBox(height: 12),
 
-                // DYNAMIC VERIFIED BADGE
+                // VERIFIED BADGE
                 if (isVerified)
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -316,7 +328,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                 ),
                 const SizedBox(height: 30),
 
-                // DECISION & ACTIONS
+                // ACTION BUTTONS (Reject/Hire/Chat)
                 if (_decisionStatus != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -421,7 +433,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                   ),
                 const SizedBox(height: 30),
 
-                // RESUME & INFO
+                // INFO CARDS
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
@@ -437,8 +449,10 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                         Colors.orange,
                       ),
 
-                      // --- FIXED: Only show Skills card if the list is strictly NOT empty ---
-                      if (skills.isNotEmpty) _buildSkillsCard(skills),
+                      // --- 2. THE FIX: Only show skills if NOT hidden ---
+                      // This ensures even if the DB has plumbing skills, we hide them for employers
+                      if (skills.isNotEmpty && !shouldHideSkills)
+                        _buildSkillsCard(skills),
 
                       const SizedBox(height: 16),
                       _buildReviewsList(),
@@ -453,9 +467,13 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     );
   }
 
+  // ... (Keep existing _buildResumeCard, _buildInfoCard, _buildSkillsCard, _buildReviewsList, _buildStatItem, _buildVerticalDivider, _buildDecisionBanner as they were)
+
+  // Just to be safe, I'm including the helper widgets below so you can copy-paste the whole file if needed.
+
   Widget _buildResumeCard(Map<String, dynamic> resume) {
     List<dynamic> experience = resume['experience'] ?? [];
-    List<dynamic> education = resume['education'] ?? [];
+    // List<dynamic> education = resume['education'] ?? []; // Unused in UI currently
     String summary = resume['summary'] ?? "No summary provided.";
 
     return Container(
