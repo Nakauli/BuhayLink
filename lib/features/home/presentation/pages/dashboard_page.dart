@@ -40,7 +40,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
   final ScrollController _scrollController = ScrollController();
 
-  // "False" means FIND JOBS mode (Seeker). "True" means MY POSTS mode (Employer).
   bool _showMyPosts = false;
   String _selectedFilter = "All";
 
@@ -56,34 +55,43 @@ class _DashboardPageState extends State<DashboardPage> {
     _setupBadgeStreams();
   }
 
+  // --- FIXED BADGE LOGIC (Bypasses Index Requirement) ---
   void _setupBadgeStreams() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
     // 1. HOME BADGE (New Job Posts)
+    // We removed .where('read', isEqualTo: false) from the query to avoid Index issues.
+    // We filter it in Dart code instead.
     _homeBadgeStream = FirebaseFirestore.instance
         .collection('notifications')
         .where('recipientId', whereIn: [uid, 'all'])
-        .where('read', isEqualTo: false)
-        .snapshots()
-        .map((snapshot) {
-          // Count only job-related notifications
-          return snapshot.docs.where((doc) {
-            final type = doc.data()['type'] as String?;
-            return type == 'job_post' || type == 'new_post';
-          }).length;
-        });
-
-    // 2. CHAT BADGE
-    _chatBadgeStream = FirebaseFirestore.instance
-        .collection('chats')
-        .where('participants', arrayContains: uid)
         .snapshots()
         .map((snapshot) {
           int count = 0;
           for (var doc in snapshot.docs) {
             final data = doc.data();
-            // Count unread messages NOT sent by me
+            final type = data['type'] as String?;
+            final isRead = data['read'] ?? false;
+
+            // Filter here instead of database query
+            if ((type == 'job_post' || type == 'new_post') && isRead == false) {
+              count++;
+            }
+          }
+          return count;
+        });
+
+    // 2. CHAT BADGE
+    _chatBadgeStream = FirebaseFirestore.instance
+        .collection('chats')
+        .where('users', arrayContains: uid)
+        .snapshots()
+        .map((snapshot) {
+          int count = 0;
+          for (var doc in snapshot.docs) {
+            final data = doc.data();
+            // Check if last message was NOT sent by me and is unread
             if (data['lastSenderId'] != uid && data['isRead'] == false) {
               count++;
             }
@@ -95,14 +103,20 @@ class _DashboardPageState extends State<DashboardPage> {
     _profileBadgeStream = FirebaseFirestore.instance
         .collection('notifications')
         .where('recipientId', isEqualTo: uid)
-        .where('read', isEqualTo: false)
         .snapshots()
         .map((snapshot) {
-          // Exclude job posts from profile badge
-          return snapshot.docs.where((doc) {
-            final type = doc.data()['type'] as String?;
-            return type != 'job_post' && type != 'new_post';
-          }).length;
+          int count = 0;
+          for (var doc in snapshot.docs) {
+            final data = doc.data();
+            final type = data['type'] as String?;
+            final isRead = data['read'] ?? false;
+
+            // Only count non-job notifications that are unread
+            if ((type != 'job_post' && type != 'new_post') && isRead == false) {
+              count++;
+            }
+          }
+          return count;
         });
   }
 
@@ -112,7 +126,7 @@ class _DashboardPageState extends State<DashboardPage> {
     super.dispose();
   }
 
-  // --- CORE: FETCH JOBS BY PAGE ---
+  // --- FETCH JOBS BY PAGE ---
   Future<void> _fetchJobs({required int page}) async {
     setState(() {
       _isJobsLoading = true;
@@ -215,21 +229,26 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  // --- MARK NOTIFICATIONS AS READ ---
   Future<void> _markAsRead(List<String> types) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     try {
+      // NOTE: We fetch unread only here for updating, which is fine for one-time reads
       final snapshot = await FirebaseFirestore.instance
           .collection('notifications')
           .where('recipientId', whereIn: [uid, 'all'])
           .where('read', isEqualTo: false)
           .get();
+
       final docsToUpdate = snapshot.docs.where((doc) {
         final data = doc.data();
         final type = data['type'] as String? ?? '';
         return types.contains(type);
       }).toList();
+
       if (docsToUpdate.isEmpty) return;
+
       WriteBatch batch = FirebaseFirestore.instance.batch();
       for (var doc in docsToUpdate) {
         batch.update(doc.reference, {'read': true});
@@ -240,12 +259,48 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  // --- MARK CHATS AS READ ---
+  Future<void> _markChatsAsRead() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('chats')
+          .where('users', arrayContains: uid)
+          .where('isRead', isEqualTo: false)
+          .get();
+
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+      bool needsCommit = false;
+
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        if (data['lastSenderId'] != uid) {
+          batch.update(doc.reference, {'isRead': true});
+          needsCommit = true;
+        }
+      }
+
+      if (needsCommit) {
+        await batch.commit();
+      }
+    } catch (e) {
+      debugPrint("Error marking chats as read: $e");
+    }
+  }
+
   void _onTabTapped(int index) {
     if (_selectedIndex == index) return;
 
-    // Mark home notifications as read if Home is clicked
+    // 1. Mark Home notifications read
     if (index == 0) {
       _markAsRead(['job_post', 'new_post']);
+    }
+
+    // 2. Mark Chat notifications read
+    if (index == 3) {
+      _markChatsAsRead();
     }
 
     setState(() {
@@ -290,7 +345,7 @@ class _DashboardPageState extends State<DashboardPage> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // --- HOME WITH BADGE ---
+                  // HOME with Badge
                   StreamBuilder<int>(
                     stream: _homeBadgeStream,
                     builder: (context, snapshot) {
@@ -305,14 +360,14 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                   _buildNavBarItem(1, Icons.search_rounded, "Search"),
 
-                  // --- MIDDLE BUTTON (CHANGES BASED ON MODE) ---
+                  // MIDDLE BUTTON
                   _buildMiddleNavBarItem(
                     2,
                     _showMyPosts ? Icons.add_rounded : Icons.assignment_rounded,
                     _showMyPosts ? "Post" : "Applied",
                   ),
 
-                  // --- CHAT WITH BADGE ---
+                  // CHAT with Badge
                   StreamBuilder<int>(
                     stream: _chatBadgeStream,
                     builder: (context, snapshot) {
@@ -326,7 +381,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     },
                   ),
 
-                  // --- PROFILE WITH BADGE ---
+                  // PROFILE with Badge
                   StreamBuilder<int>(
                     stream: _profileBadgeStream,
                     builder: (context, snapshot) {
@@ -526,9 +581,6 @@ class _DashboardPageState extends State<DashboardPage> {
       case 1:
         return SearchPage(isEmployerMode: _showMyPosts);
       case 2:
-        // --- THIS CONTROLS THE POST JOB VISIBILITY ---
-        // If _showMyPosts is TRUE, we show AddJobPage.
-        // If FALSE, we show AppliedJobsPage.
         return _showMyPosts
             ? const AddJobPage(showBackButton: false)
             : const AppliedJobsPage(showBackButton: false);
@@ -751,7 +803,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 }
 
-// --- ANIMATED HEADER WITH NAME FIX ---
+// ... (Animated Header with Name Fix)
 class _AnimatedHeader extends StatefulWidget {
   final DashboardRepository repository;
   final bool showMyPosts;
@@ -852,7 +904,6 @@ class _AnimatedHeaderState extends State<_AnimatedHeader> {
                     if (snapshot.hasData && snapshot.data!.exists) {
                       final data =
                           snapshot.data!.data() as Map<String, dynamic>?;
-                      // Updated logic to check 'name' first
                       final String realName =
                           data?['name'] ??
                           data?['fullName'] ??

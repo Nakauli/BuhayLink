@@ -11,6 +11,7 @@ class ChatRepository {
     : _firestore = firestore ?? FirebaseFirestore.instance,
       _auth = auth ?? FirebaseAuth.instance;
 
+  // 1. GET MESSAGES (Real-time)
   Stream<QuerySnapshot> getMessagesStream(String chatRoomId) {
     return _firestore
         .collection('chats')
@@ -20,7 +21,7 @@ class ChatRepository {
         .snapshots();
   }
 
-  // 2. SEND MESSAGE (UPDATED FOR RED DOT)
+  // 2. SEND MESSAGE (FIXED: Uses 'lastTimestamp' and 'users')
   Future<void> sendMessage(
     String chatRoomId,
     String receiverId,
@@ -43,39 +44,36 @@ class ChatRepository {
         .collection('messages')
         .add(messageData);
 
-    // [CRITICAL UPDATE] Update Main Chat Doc for Dashboard Notification
-    // 'participants' must arrayContains me for the query to work
-    // 'lastSenderId' tells the receiver "this wasn't you"
-    // 'isRead': false triggers the red dot
+    // [FIXED] Using 'lastTimestamp' to match your existing data
     await _firestore.collection('chats').doc(chatRoomId).set({
       'lastMessage': text.trim(),
-      'lastMessageTime':
-          FieldValue.serverTimestamp(), // Fixed field name for sorting
-      'participants': [
-        senderId,
-        receiverId,
-      ], // Renamed 'users' to 'participants' to match Dashboard query
-      'lastSenderId': senderId, // Crucial for "unread" logic
-      'isRead': false, // Crucial for red dot
+      'lastTimestamp':
+          FieldValue.serverTimestamp(), // Reverted to lastTimestamp
+      'users': [senderId, receiverId], // Reverted to users
+      'lastSenderId': senderId,
+      'isRead': false,
     }, SetOptions(merge: true));
   }
 
+  // 3. GET ALL CHAT ROOMS (FIXED QUERY)
   Stream<QuerySnapshot> getAllChatRoomsStream() {
     final String uid = _auth.currentUser?.uid ?? "";
     if (uid.isEmpty) return const Stream.empty();
 
-    // Updated to match the 'sendMessage' field 'participants'
+    // [FIXED] Queries 'users' and sorts by 'lastTimestamp' to find old chats
     return _firestore
         .collection('chats')
-        .where('participants', arrayContains: uid)
-        .orderBy('lastMessageTime', descending: true)
+        .where('users', arrayContains: uid)
+        .orderBy('lastTimestamp', descending: true) // Reverted to lastTimestamp
         .snapshots();
   }
 
+  // 4. GET USER STATUS
   Stream<DocumentSnapshot> getUserStatusStream(String userId) {
     return _firestore.collection('users').doc(userId).snapshots();
   }
 
+  // 5. START CHAT
   Future<void> startChat(
     BuildContext context,
     String receiverId,
@@ -92,11 +90,11 @@ class ChatRepository {
     final chatDoc = await _firestore.collection('chats').doc(chatRoomId).get();
     if (!chatDoc.exists) {
       await _firestore.collection('chats').doc(chatRoomId).set({
-        'participants': ids, // Consistent field name
-        'lastMessageTime': FieldValue.serverTimestamp(),
+        'users': ids,
+        'lastTimestamp': FieldValue.serverTimestamp(),
         'lastMessage': 'Started a conversation',
         'createdBy': currentUser.uid,
-        'isRead': true, // Start as read
+        'isRead': true,
         'lastSenderId': currentUser.uid,
       });
     }
