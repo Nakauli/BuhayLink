@@ -67,7 +67,13 @@ class _ProfilePageState extends State<ProfilePage> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text("$feature Access Denied"),
-        content: Text("Please enable $feature access in settings."),
+        content: Text(
+          "To upload a profile picture, please enable $feature access in your phone settings.\n\n"
+          "1. Go to Settings\n"
+          "2. Select Apps > BuhayLink\n"
+          "3. Tap Permissions\n"
+          "4. Allow $feature",
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -78,8 +84,10 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // --- IMAGE UPLOAD ---
+  // --- IMAGE UPLOAD LOGIC ---
   Future<void> _pickAndUploadImage() async {
+    print("Camera button clicked!"); // Debug print
+
     showModalBottomSheet(
       context: context,
       builder: (modalContext) => SafeArea(
@@ -144,7 +152,7 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  // --- LOCATION DIALOG (WITH GPS FEATURE) ---
+  // --- LOCATION DIALOG ---
   void _showLocationDialog(String current) {
     final ctrl = TextEditingController(text: current);
     bool isLoading = false;
@@ -167,8 +175,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-
-                // 🚀 "USE CURRENT LOCATION" BUTTON
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -177,7 +183,6 @@ class _ProfilePageState extends State<ProfilePage> {
                         : () async {
                             setState(() => isLoading = true);
                             try {
-                              // Ensure your ProfileRepository has getCurrentLocation() implemented!
                               String address = await _repository
                                   .getCurrentLocation();
                               ctrl.text = address;
@@ -380,84 +385,104 @@ class _ProfilePageState extends State<ProfilePage> {
             padding: EdgeInsets.zero,
             child: Column(
               children: [
-                // 1. HEADER
-                Stack(
-                  alignment: Alignment.bottomCenter,
-                  clipBehavior: Clip.none,
-                  children: [
-                    Container(
-                      height: 180,
-                      width: double.infinity,
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.only(
-                          bottomLeft: Radius.circular(32),
-                          bottomRight: Radius.circular(32),
+                // 1. HEADER (FIXED CLICKABILITY)
+                // We use a SizedBox large enough to hold everything without overflow
+                SizedBox(
+                  height: 260, // Increased height to ensure button is inside
+                  child: Stack(
+                    alignment: Alignment.topCenter,
+                    children: [
+                      // Gradient Background
+                      Container(
+                        height: 180,
+                        width: double.infinity,
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.only(
+                            bottomLeft: Radius.circular(32),
+                            bottomRight: Radius.circular(32),
+                          ),
                         ),
                       ),
-                    ),
-                    Positioned(
-                      bottom: -50,
-                      child: Stack(
-                        alignment: Alignment.bottomRight,
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 4),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black12,
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 5),
-                                ),
-                              ],
-                            ),
-                            child: CircleAvatar(
-                              radius: 55,
-                              backgroundColor: Colors.white,
-                              backgroundImage: (data['photoUrl'] != null)
-                                  ? NetworkImage(data['photoUrl'])
-                                  : (user?.photoURL != null
-                                        ? NetworkImage(user!.photoURL!)
-                                        : null),
-                              child:
-                                  (data['photoUrl'] == null &&
-                                      user?.photoURL == null)
-                                  ? const Icon(
-                                      Icons.person,
-                                      size: 50,
-                                      color: Colors.grey,
-                                    )
-                                  : null,
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: _pickAndUploadImage,
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF2E7EFF),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.camera_alt,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
 
-                const SizedBox(height: 60),
+                      // Profile Picture & Camera Button
+                      Positioned(
+                        top: 120, // Positioned to overlap the gradient line
+                        child: SizedBox(
+                          width: 120,
+                          height: 120,
+                          child: Stack(
+                            children: [
+                              // The Image
+                              Container(
+                                width: 120,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 4,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black12,
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 5),
+                                    ),
+                                  ],
+                                ),
+                                child: CircleAvatar(
+                                  radius: 55,
+                                  backgroundColor: Colors.white,
+                                  backgroundImage: (data['photoUrl'] != null)
+                                      ? NetworkImage(data['photoUrl'])
+                                      : null,
+                                  child: (data['photoUrl'] == null)
+                                      ? const Icon(
+                                          Icons.person,
+                                          size: 50,
+                                          color: Colors.grey,
+                                        )
+                                      : null,
+                                ),
+                              ),
+
+                              // The Camera Button (Using InkWell for clearer touch feedback)
+                              Positioned(
+                                bottom: 0,
+                                right: 0,
+                                child: Material(
+                                  color: const Color(
+                                    0xFF2E7EFF,
+                                  ), // Button color
+                                  shape: const CircleBorder(),
+                                  elevation: 4,
+                                  child: InkWell(
+                                    onTap:
+                                        _pickAndUploadImage, // This calls your function
+                                    customBorder: const CircleBorder(),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(10),
+                                      child: const Icon(
+                                        Icons.camera_alt,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
                 // 2. NAME & BADGE
                 Text(
@@ -540,7 +565,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Column(
                     children: [
-                      // Seeker Section
                       _buildSectionHeader(
                         "My Activity",
                         Icons.person_search_rounded,
@@ -597,7 +621,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
                       const SizedBox(height: 24),
 
-                      // Employer Section
                       _buildSectionHeader(
                         "Employer Dashboard",
                         Icons.business_center_rounded,
