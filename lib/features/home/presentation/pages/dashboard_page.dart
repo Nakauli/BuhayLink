@@ -1,8 +1,7 @@
-import 'dart:async'; // Needed for the animation timer
+import 'dart:async';
 import 'package:buhay_link/widgets/notification_badge.dart';
 import 'package:buhay_link/features/jobs/data/repositories/dashboard_repository.dart';
 import 'package:buhay_link/widgets/job_card.dart';
-import 'package:buhay_link/widgets/stat_card.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,10 +14,6 @@ import 'search_page.dart';
 import 'notifications_page.dart';
 import 'job_details_page.dart';
 import 'applied_jobs_page.dart';
-import 'hired_jobs_page.dart';
-import 'saved_jobs_page.dart';
-import 'my_posted_jobs_page.dart';
-import 'public_profile_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -28,51 +23,181 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  // 1. Initialize Repository
   final _repository = DashboardRepository();
 
   int _selectedIndex = 0;
-  bool _showMyPosts = false;
-  String _selectedFilter = "All";
-  String _searchQuery = "";
-
-  // Navigation History Stack
   final List<int> _navigationHistory = [0];
 
-  // --- HELPER: Mark specific notification types as read ---
+  // --- PAGINATION STATE ---
+  final int _jobsPerPage = 20; // Changed to 20 as requested
+  List<DocumentSnapshot> _jobs = [];
+  bool _isJobsLoading = false;
+
+  // Page Tracking
+  int _currentPage = 1;
+  // Stores the "startAfter" document for each page so we can go back accurately
+  // Key: Page Number, Value: The DocumentSnapshot to start AFTER
+  final Map<int, DocumentSnapshot?> _pageCursors = {1: null};
+  bool _hasNextPage = true; // Assumes true until we fetch less than limit
+
+  final ScrollController _scrollController = ScrollController();
+
+  bool _showMyPosts = false;
+  String _selectedFilter = "All";
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchJobs(page: 1);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  // --- CORE: FETCH JOBS BY PAGE ---
+  Future<void> _fetchJobs({required int page}) async {
+    setState(() {
+      _isJobsLoading = true;
+    });
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+
+      Query query = FirebaseFirestore.instance
+          .collection('jobs')
+          .orderBy('postedAt', descending: true);
+
+      if (_showMyPosts && user != null) {
+        query = query.where('postedBy', isEqualTo: user.uid);
+      }
+
+      // Get the cursor for this specific page
+      DocumentSnapshot? startAfterDoc = _pageCursors[page];
+
+      if (startAfterDoc != null) {
+        query = query.startAfterDocument(startAfterDoc);
+      }
+
+      // Fetch 1 extra item to check if a "Next Page" exists, then remove it from display
+      QuerySnapshot snapshot = await query.limit(_jobsPerPage).get();
+
+      if (snapshot.docs.isNotEmpty) {
+        var newJobs = snapshot.docs;
+
+        // Client-Side Filtering (Hide My Posts in "Find Jobs")
+        if (!_showMyPosts && user != null) {
+          newJobs = newJobs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return data['postedBy'] != user.uid;
+          }).toList();
+        }
+
+        // Quick Filters
+        if (!_showMyPosts) {
+          if (_selectedFilter == "Urgent") {
+            newJobs = newJobs
+                .where((doc) => (doc.data() as Map)['isUrgent'] == true)
+                .toList();
+          } else if (_selectedFilter == "₱ High Pay") {
+            newJobs = newJobs
+                .where(
+                  (doc) => ((doc.data() as Map)['budgetMax'] ?? 0) >= 20000,
+                )
+                .toList();
+          } else if (_selectedFilter == "Nearby") {
+            newJobs = newJobs
+                .where(
+                  (doc) => (doc.data() as Map)['location']
+                      .toString()
+                      .toLowerCase()
+                      .contains("santo tomas"),
+                )
+                .toList();
+          }
+        }
+
+        setState(() {
+          _jobs = newJobs;
+          _currentPage = page;
+
+          // Determine if Next Page is possible
+          // If we got full limit, we assume there might be more
+          _hasNextPage = snapshot.docs.length == _jobsPerPage;
+
+          // Save the cursor for the NEXT page (Page + 1)
+          if (snapshot.docs.isNotEmpty) {
+            _pageCursors[page + 1] = snapshot.docs.last;
+          }
+        });
+
+        // Scroll to top when page changes
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      } else {
+        setState(() {
+          _jobs = [];
+          _hasNextPage = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching jobs: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isJobsLoading = false;
+        });
+      }
+    }
+  }
+
+  void _nextPage() {
+    if (_hasNextPage) {
+      _fetchJobs(page: _currentPage + 1);
+    }
+  }
+
+  void _prevPage() {
+    if (_currentPage > 1) {
+      _fetchJobs(page: _currentPage - 1);
+    }
+  }
+
+  // ... (Keep existing helpers: _markAsRead, _onTabTapped, _buildNavBarItem, etc.) ...
   Future<void> _markAsRead(List<String> types) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('notifications')
           .where('recipientId', whereIn: [uid, 'all'])
           .where('read', isEqualTo: false)
           .get();
-
       final docsToUpdate = snapshot.docs.where((doc) {
         final data = doc.data();
         final type = data['type'] as String? ?? '';
         return types.contains(type);
       }).toList();
-
       if (docsToUpdate.isEmpty) return;
-
       WriteBatch batch = FirebaseFirestore.instance.batch();
       for (var doc in docsToUpdate) {
         batch.update(doc.reference, {'read': true});
       }
       await batch.commit();
     } catch (e) {
-      print("Error marking as read: $e");
+      debugPrint("Error marking as read: $e");
     }
   }
 
-  // Custom Tab Switch Logic
   void _onTabTapped(int index) {
     if (_selectedIndex == index) return;
-
     setState(() {
       _selectedIndex = index;
       _navigationHistory.add(index);
@@ -92,22 +217,13 @@ class _DashboardPageState extends State<DashboardPage> {
       },
       child: Scaffold(
         backgroundColor: Colors.grey[50],
-
-        // FIX: Changed to false. This prevents content from scrolling BEHIND the navbar.
         extendBody: false,
-
         body: _selectedIndex == 0 ? _buildHomeWithHeader() : _getBodyContent(),
-
-        // ---------------------------------------------------------
-        // FLOATING ISLAND NAVIGATION BAR
-        // ---------------------------------------------------------
         bottomNavigationBar: Container(
-          // FIX: Added background color to block scrolling text
           color: Colors.grey[50],
           child: SafeArea(
             child: Container(
               height: 70,
-              // FIX: Adjusted margin to sit nicely in the solid block
               margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
@@ -126,14 +242,11 @@ class _DashboardPageState extends State<DashboardPage> {
                 children: [
                   _buildNavBarItem(0, Icons.home_rounded, "Home"),
                   _buildNavBarItem(1, Icons.search_rounded, "Search"),
-
-                  // Special Middle Button
                   _buildMiddleNavBarItem(
                     2,
                     _showMyPosts ? Icons.add_rounded : Icons.assignment_rounded,
                     _showMyPosts ? "Post" : "Applied",
                   ),
-
                   _buildNavBarItem(3, Icons.chat_bubble_rounded, "Chat"),
                   _buildNavBarItem(4, Icons.person_rounded, "Profile"),
                 ],
@@ -146,8 +259,317 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // ---------------------------------------------------------
-  // UI HELPER: Standard Nav Item
+  // HOME CONTENT
   // ---------------------------------------------------------
+  Widget _buildHomeWithHeader() {
+    return Column(
+      children: [
+        _AnimatedHeader(
+          repository: _repository,
+          showMyPosts: _showMyPosts,
+          onMarkRead: _markAsRead,
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(child: _buildToggleButton("Find Jobs", !_showMyPosts)),
+                Expanded(child: _buildToggleButton("My Posts", _showMyPosts)),
+              ],
+            ),
+          ),
+        ),
+        if (!_showMyPosts)
+          SizedBox(
+            height: 50,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+              children: [
+                _buildFilterChip("All", icon: Icons.grid_view_rounded),
+                const SizedBox(width: 12),
+                _buildFilterChip("Nearby", icon: Icons.near_me_rounded),
+                const SizedBox(width: 12),
+                _buildFilterChip("Urgent", icon: Icons.timer_rounded),
+                const SizedBox(width: 12),
+                _buildFilterChip(
+                  "₱ High Pay",
+                  icon: Icons.account_balance_wallet_rounded,
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 8),
+
+        // --- JOB LIST ---
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () async {
+              // Reset pagination on pull-to-refresh
+              _pageCursors.clear();
+              _pageCursors[1] = null;
+              await _fetchJobs(page: 1);
+            },
+            child: _isJobsLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _jobs.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.folder_open_rounded,
+                          size: 60,
+                          color: Colors.grey[300],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _showMyPosts
+                              ? "You haven't posted any jobs."
+                              : "No jobs found.",
+                          style: TextStyle(color: Colors.grey[500]),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(24, 10, 24, 30),
+                    // Add +1 for the Pagination Controls at the bottom
+                    itemCount: _jobs.length + 1,
+                    separatorBuilder: (_, __) => const SizedBox(height: 16),
+                    itemBuilder: (context, index) {
+                      // --- PAGINATION CONTROLS (At Bottom) ---
+                      if (index == _jobs.length) {
+                        // Don't show controls if list is empty or very short and no next page
+                        if (_jobs.isEmpty) return const SizedBox.shrink();
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 20),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // LEFT ARROW (Previous)
+                              IconButton(
+                                onPressed: _currentPage > 1 ? _prevPage : null,
+                                icon: const Icon(Icons.arrow_back_ios_rounded),
+                                color: _currentPage > 1
+                                    ? const Color(0xFF2E7EFF)
+                                    : Colors.grey[300],
+                              ),
+
+                              const SizedBox(width: 20),
+
+                              // PAGE NUMBER
+                              Text(
+                                "Page $_currentPage",
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Colors.black87,
+                                ),
+                              ),
+
+                              const SizedBox(width: 20),
+
+                              // RIGHT ARROW (Next)
+                              IconButton(
+                                onPressed: _hasNextPage ? _nextPage : null,
+                                icon: const Icon(
+                                  Icons.arrow_forward_ios_rounded,
+                                ),
+                                color: _hasNextPage
+                                    ? const Color(0xFF2E7EFF)
+                                    : Colors.grey[300],
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      // --- JOB CARD ---
+                      final doc = _jobs[index];
+                      final data = doc.data() as Map<String, dynamic>;
+                      final String jobId = doc.id;
+
+                      final Map<String, dynamic> jobMap = {
+                        "jobId": jobId,
+                        "title": data['title'] ?? "Untitled",
+                        "description": data['description'] ?? "No description",
+                        "tag": data['category'] ?? "General",
+                        "price":
+                            "₱${data['budgetMin'] ?? 0} - ₱${data['budgetMax'] ?? 0}",
+                        "location": data['location'] ?? "Remote",
+                        "duration": data['duration'] ?? "3 days",
+                        "applicants": data['applicants'] ?? 0,
+                        "isUrgent": data['isUrgent'] ?? false,
+                        "status": data['status'] ?? "open",
+                        "posterId": data['postedBy'] ?? "",
+                        "rating": data['posterRating']?.toString() ?? "New",
+                        "posterName": data['posterName'] ?? "Employer",
+                        "posterPhoto": data['posterPhoto'],
+                        "postedBy": data['postedBy'],
+                        "hiredApplicantId": data['hiredApplicantId'],
+                      };
+
+                      return JobCard(
+                        job: jobMap,
+                        showStatus: true,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  JobDetailsPage(job: jobMap, jobId: jobId),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ... (Rest of existing methods unchanged: _getBodyContent, _buildFilterChip, _buildToggleButton, _buildNavBarItem, _buildMiddleNavBarItem, _AnimatedHeader) ...
+
+  Widget _getBodyContent() {
+    switch (_selectedIndex) {
+      case 1:
+        return SearchPage(isEmployerMode: _showMyPosts);
+      case 2:
+        return _showMyPosts
+            ? const AddJobPage(showBackButton: false)
+            : const AppliedJobsPage(showBackButton: false);
+      case 3:
+        return const MessagesPage();
+      case 4:
+        return const ProfilePage();
+      default:
+        return const Center(child: Text("Page Not Found"));
+    }
+  }
+
+  Widget _buildFilterChip(String label, {IconData? icon}) {
+    bool isActive = _selectedFilter == label;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedFilter = label;
+          // Reset to page 1 on filter change
+          _pageCursors.clear();
+          _pageCursors[1] = null;
+          _fetchJobs(page: 1);
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          gradient: isActive
+              ? const LinearGradient(
+                  colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: isActive ? null : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: isActive
+                  ? const Color(0xFF2E7EFF).withOpacity(0.4)
+                  : Colors.grey.withOpacity(0.1),
+              blurRadius: isActive ? 10 : 5,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: isActive ? null : Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 16,
+                color: isActive ? Colors.white : Colors.grey[600],
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? Colors.white : Colors.grey[700],
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToggleButton(String text, bool isActive) {
+    return GestureDetector(
+      onTap: () {
+        if (text == "My Posts" && !_showMyPosts) {
+          setState(() {
+            _showMyPosts = true;
+            _selectedFilter = "All";
+            // Reset to page 1
+            _pageCursors.clear();
+            _pageCursors[1] = null;
+            _fetchJobs(page: 1);
+          });
+        } else if (text == "Find Jobs" && _showMyPosts) {
+          setState(() {
+            _showMyPosts = false;
+            _selectedFilter = "All";
+            // Reset to page 1
+            _pageCursors.clear();
+            _pageCursors[1] = null;
+            _fetchJobs(page: 1);
+          });
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF2E7EFF) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: isActive ? Colors.white : Colors.grey,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildNavBarItem(int index, IconData icon, String label) {
     final isSelected = _selectedIndex == index;
     return Expanded(
@@ -182,9 +604,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // ---------------------------------------------------------
-  // UI HELPER: Middle "Epic" Button
-  // ---------------------------------------------------------
   Widget _buildMiddleNavBarItem(int index, IconData icon, String label) {
     final isSelected = _selectedIndex == index;
     return Expanded(
@@ -233,309 +652,16 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
-
-  // ---------------------------------------------------------
-  // HOME CONTENT
-  // ---------------------------------------------------------
-  Widget _buildHomeWithHeader() {
-    return Column(
-      children: [
-        // A. ISOLATED ALIVE HEADER
-        _AnimatedHeader(
-          repository: _repository,
-          showMyPosts: _showMyPosts,
-          onToggleView: (bool isMyPosts) {
-            setState(() {
-              _showMyPosts = isMyPosts;
-              _selectedFilter = "All";
-              _searchQuery = "";
-            });
-          },
-          onMarkRead: _markAsRead,
-        ),
-
-        // B. SEARCH BAR
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-          child: TextField(
-            onChanged: (value) =>
-                setState(() => _searchQuery = value.toLowerCase()),
-            decoration: InputDecoration(
-              hintText: _showMyPosts
-                  ? "Search my posts..."
-                  : "Search for jobs...",
-              prefixIcon: const Icon(Icons.search, color: Colors.grey),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(vertical: 14),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: Colors.grey.shade200),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: Colors.grey.shade200),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Color(0xFF2E7EFF)),
-              ),
-            ),
-          ),
-        ),
-
-        // C. IMPROVED UI FILTERS
-        if (!_showMyPosts)
-          SizedBox(
-            height: 50,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              clipBehavior: Clip.none,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-              children: [
-                _buildFilterChip("All", icon: Icons.grid_view_rounded),
-                const SizedBox(width: 12),
-                _buildFilterChip("Nearby", icon: Icons.near_me_rounded),
-                const SizedBox(width: 12),
-                _buildFilterChip("Urgent", icon: Icons.timer_rounded),
-                const SizedBox(width: 12),
-                _buildFilterChip(
-                  "₱ High Pay",
-                  icon: Icons.account_balance_wallet_rounded,
-                ),
-              ],
-            ),
-          ),
-
-        const SizedBox(height: 8),
-
-        // D. JOB LIST STREAM
-        Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: _showMyPosts
-                ? _repository.getMyPostsStream()
-                : _repository.getAllJobsStream(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return Center(
-                  child: Text(
-                    _showMyPosts
-                        ? "You haven't posted any jobs."
-                        : "No jobs found.",
-                    style: TextStyle(color: Colors.grey[500]),
-                  ),
-                );
-              }
-
-              var docs = snapshot.data!.docs;
-              final currentUid = FirebaseAuth.instance.currentUser?.uid;
-
-              if (!_showMyPosts && currentUid != null) {
-                docs = docs.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return data['postedBy'] != currentUid;
-                }).toList();
-              }
-
-              if (_searchQuery.isNotEmpty) {
-                docs = docs.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return (data['title'] ?? "")
-                          .toString()
-                          .toLowerCase()
-                          .contains(_searchQuery) ||
-                      (data['category'] ?? "")
-                          .toString()
-                          .toLowerCase()
-                          .contains(_searchQuery);
-                }).toList();
-              }
-
-              if (!_showMyPosts) {
-                if (_selectedFilter == "Urgent") {
-                  docs = docs
-                      .where(
-                        (doc) =>
-                            (doc.data() as Map<String, dynamic>)['isUrgent'] ==
-                            true,
-                      )
-                      .toList();
-                } else if (_selectedFilter == "₱ High Pay") {
-                  docs = docs
-                      .where(
-                        (doc) =>
-                            ((doc.data()
-                                    as Map<String, dynamic>)['budgetMax'] ??
-                                0) >=
-                            20000,
-                      )
-                      .toList();
-                } else if (_selectedFilter == "Nearby") {
-                  docs = docs
-                      .where(
-                        (doc) =>
-                            (doc.data() as Map<String, dynamic>)['location']
-                                .toString()
-                                .toLowerCase()
-                                .contains("santo tomas"),
-                      )
-                      .toList();
-                }
-              }
-
-              if (docs.isEmpty) {
-                return Center(
-                  child: Text(
-                    "No matches found.",
-                    style: TextStyle(color: Colors.grey[500]),
-                  ),
-                );
-              }
-
-              return ListView.separated(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 10,
-                ),
-                itemCount: docs.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 16),
-                itemBuilder: (context, index) {
-                  final doc = docs[index];
-                  final data = doc.data() as Map<String, dynamic>;
-                  final String jobId = doc.id;
-
-                  final Map<String, dynamic> jobMap = {
-                    "jobId": jobId,
-                    "title": data['title'] ?? "Untitled",
-                    "description": data['description'] ?? "No description",
-                    "tag": data['category'] ?? "General",
-                    "price":
-                        "₱${data['budgetMin'] ?? 0} - ₱${data['budgetMax'] ?? 0}",
-                    "location": data['location'] ?? "Remote",
-                    "duration": data['duration'] ?? "3 days",
-                    "applicants": data['applicants'] ?? 0,
-                    "isUrgent": data['isUrgent'] ?? false,
-                    "status": data['status'] ?? "open",
-                    "posterId": data['postedBy'] ?? "",
-                    "rating": data['posterRating']?.toString() ?? "New",
-                    "posterName": data['posterName'] ?? "Employer",
-                    "posterPhoto": data['posterPhoto'],
-                    "postedBy": data['postedBy'],
-                    "hiredApplicantId": data['hiredApplicantId'],
-                  };
-
-                  return JobCard(
-                    job: jobMap,
-                    showStatus: true,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              JobDetailsPage(job: jobMap, jobId: jobId),
-                        ),
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _getBodyContent() {
-    switch (_selectedIndex) {
-      case 1:
-        return SearchPage(isEmployerMode: _showMyPosts);
-      case 2:
-        return _showMyPosts
-            ? const AddJobPage(showBackButton: false)
-            : const AppliedJobsPage(showBackButton: false);
-      case 3:
-        return const MessagesPage();
-      case 4:
-        return const ProfilePage();
-      default:
-        return const Center(child: Text("Page Not Found"));
-    }
-  }
-
-  // ---------------------------------------------------------
-  // IMPROVED FILTER CHIP UI
-  // ---------------------------------------------------------
-  Widget _buildFilterChip(String label, {IconData? icon}) {
-    bool isActive = _selectedFilter == label;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedFilter = label),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: isActive
-              ? const LinearGradient(
-                  colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : null,
-          color: isActive ? null : Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: isActive
-                  ? const Color(0xFF2E7EFF).withOpacity(0.4)
-                  : Colors.grey.withOpacity(0.1),
-              blurRadius: isActive ? 10 : 5,
-              offset: const Offset(0, 4),
-            ),
-          ],
-          border: isActive ? null : Border.all(color: Colors.grey.shade200),
-        ),
-        child: Row(
-          children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: 16,
-                color: isActive ? Colors.white : Colors.grey[600],
-              ),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                color: isActive ? Colors.white : Colors.grey[700],
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
-// =========================================================================
-// ISOLATED HEADER WIDGET
-// =========================================================================
 class _AnimatedHeader extends StatefulWidget {
   final DashboardRepository repository;
   final bool showMyPosts;
-  final Function(bool) onToggleView;
   final Function(List<String>) onMarkRead;
 
   const _AnimatedHeader({
     required this.repository,
     required this.showMyPosts,
-    required this.onToggleView,
     required this.onMarkRead,
   });
 
@@ -611,311 +737,95 @@ class _AnimatedHeaderState extends State<_AnimatedHeader> {
           ),
         ],
       ),
-      child: Column(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Welcome back,",
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  if (uid != null)
-                    StreamBuilder<DocumentSnapshot>(
-                      stream: widget.repository.getUserStatsStream(),
-                      builder: (context, snapshot) {
-                        if (snapshot.hasData && snapshot.data!.exists) {
-                          final data =
-                              snapshot.data!.data() as Map<String, dynamic>?;
-                          final String realName =
-                              data?['fullName'] ??
-                              data?['firstName'] ??
-                              data?['username'] ??
-                              emailName;
-                          return Text(
-                            realName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          );
-                        }
-                        return Text(
-                          emailName,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        );
-                      },
-                    )
-                  else
-                    const Text(
-                      "Guest",
-                      style: TextStyle(
+              const Text(
+                "Welcome back,",
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              if (uid != null)
+                StreamBuilder<DocumentSnapshot>(
+                  stream: widget.repository.getUserStatsStream(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasData && snapshot.data!.exists) {
+                      final data =
+                          snapshot.data!.data() as Map<String, dynamic>?;
+                      final String realName =
+                          data?['fullName'] ??
+                          data?['firstName'] ??
+                          data?['username'] ??
+                          emailName;
+                      return Text(
+                        realName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      );
+                    }
+                    return Text(
+                      emailName,
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
-                    ),
-                ],
-              ),
-              GestureDetector(
-                onTap: () {
-                  if (widget.showMyPosts) {
-                    widget.onMarkRead(['application']);
-                  } else {
-                    widget.onMarkRead([
-                      'new_post',
-                      'post',
-                      'job_post',
-                      'created',
-                      'hired',
-                      'rejected',
-                    ]);
-                  }
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          NotificationsPage(isEmployerMode: widget.showMyPosts),
-                    ),
-                  );
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white24, width: 1),
-                  ),
-                  child: NotificationBadge(
-                    icon: Icons.notifications,
+                    );
+                  },
+                )
+              else
+                const Text(
+                  "Guest",
+                  style: TextStyle(
                     color: Colors.white,
-                    isEmployerMode: widget.showMyPosts,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-              ),
             ],
           ),
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildToggleButton("Find Jobs", !widget.showMyPosts),
+          GestureDetector(
+            onTap: () {
+              if (widget.showMyPosts) {
+                widget.onMarkRead(['application']);
+              } else {
+                widget.onMarkRead([
+                  'new_post',
+                  'post',
+                  'job_post',
+                  'created',
+                  'hired',
+                  'rejected',
+                ]);
+              }
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      NotificationsPage(isEmployerMode: widget.showMyPosts),
                 ),
-                Expanded(
-                  child: _buildToggleButton("My Posts", widget.showMyPosts),
-                ),
-              ],
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white24, width: 1),
+              ),
+              child: NotificationBadge(
+                icon: Icons.notifications,
+                color: Colors.white,
+                isEmployerMode: widget.showMyPosts,
+              ),
             ),
           ),
-          const SizedBox(height: 24),
-          if (widget.showMyPosts)
-            StreamBuilder<QuerySnapshot>(
-              stream: widget.repository.getMyPostsStream(),
-              builder: (context, snapshot) {
-                int active = 0;
-                int hired = 0;
-                int total = 0;
-                if (snapshot.hasData) {
-                  total = snapshot.data!.docs.length;
-                  active = snapshot.data!.docs
-                      .where((doc) => doc['status'] == 'open')
-                      .length;
-                  hired = snapshot.data!.docs
-                      .where(
-                        (doc) =>
-                            doc['status'] == 'hired' ||
-                            doc['status'] == 'closed',
-                      )
-                      .length;
-                }
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    StatCard(
-                      value: active.toString(),
-                      label: "Active",
-                      icon: Icons.work_outline,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => MyPostedJobsPage(
-                            title: "Active Jobs",
-                            statusFilter: ['open'],
-                          ),
-                        ),
-                      ),
-                    ),
-                    StatCard(
-                      value: hired.toString(),
-                      label: "Hired",
-                      icon: Icons.handshake_rounded,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => MyPostedJobsPage(
-                            title: "Hired History",
-                            statusFilter: ['hired', 'closed'],
-                          ),
-                        ),
-                      ),
-                    ),
-                    StreamBuilder<DocumentSnapshot>(
-                      stream: widget.repository.getUserStatsStream(),
-                      builder: (context, userSnapshot) {
-                        String rating = "0.0";
-                        if (userSnapshot.hasData && userSnapshot.data!.exists) {
-                          final userData =
-                              userSnapshot.data!.data()
-                                  as Map<String, dynamic>?;
-                          double r = (userData?['rating'] is num)
-                              ? (userData?['rating'] as num).toDouble()
-                              : 0.0;
-                          rating = r.toStringAsFixed(1);
-                        }
-                        return StatCard(
-                          value: rating,
-                          label: "Ratings",
-                          icon: Icons.star_rounded,
-                          onTap: uid != null
-                              ? () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => PublicProfilePage(
-                                      userId: uid,
-                                      userName: "Me",
-                                    ),
-                                  ),
-                                )
-                              : null,
-                        );
-                      },
-                    ),
-                    StatCard(
-                      value: total.toString(),
-                      label: "Total Posts",
-                      icon: Icons.list_alt_rounded,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => MyPostedJobsPage(
-                            title: "All Posts",
-                            statusFilter: [],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            )
-          else
-            StreamBuilder<DocumentSnapshot>(
-              stream: widget.repository.getUserStatsStream(),
-              builder: (context, snapshot) {
-                final data = snapshot.data?.data() as Map<String, dynamic>?;
-                final String appliedCount =
-                    data?['appliedCount']?.toString() ?? "0";
-                final String savedCount =
-                    data?['savedCount']?.toString() ?? "0";
-                final String hiredCount =
-                    data?['hiredCompleted']?.toString() ?? "0";
-                double rating = (data?['rating'] is num)
-                    ? (data?['rating'] as num).toDouble()
-                    : 0.0;
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    StatCard(
-                      value: appliedCount,
-                      label: "Applied",
-                      icon: Icons.assignment_turned_in_rounded,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const AppliedJobsPage(),
-                        ),
-                      ),
-                    ),
-                    StatCard(
-                      value: hiredCount,
-                      label: "Hired",
-                      icon: Icons.check_circle_outline,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const HiredJobsPage(),
-                        ),
-                      ),
-                    ),
-                    StatCard(
-                      value: rating.toStringAsFixed(1),
-                      label: "Ratings",
-                      icon: Icons.star_rounded,
-                      onTap: uid != null
-                          ? () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => PublicProfilePage(
-                                  userId: uid,
-                                  userName: "Me",
-                                ),
-                              ),
-                            )
-                          : null,
-                    ),
-                    StatCard(
-                      value: savedCount,
-                      label: "Saved",
-                      icon: Icons.bookmark_rounded,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SavedJobsPage(),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildToggleButton(String text, bool isActive) {
-    return GestureDetector(
-      onTap: () => widget.onToggleView(text == "My Posts"),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isActive ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Center(
-          child: Text(
-            text,
-            style: TextStyle(
-              color: isActive ? const Color(0xFF2E7EFF) : Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
       ),
     );
   }
