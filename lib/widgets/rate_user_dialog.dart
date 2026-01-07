@@ -31,21 +31,25 @@ class _RateUserDialogState extends State<RateUserDialog> {
           const Text("How was working with this person?"),
           const SizedBox(height: 20),
 
-          // --- STAR RATING ROW ---
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(5, (index) {
-              return IconButton(
-                onPressed: () {
-                  setState(() => _rating = index + 1.0);
-                },
-                icon: Icon(
-                  index < _rating ? Icons.star : Icons.star_border,
-                  color: Colors.amber,
-                  size: 32,
-                ),
-              );
-            }),
+          // --- STAR RATING ROW (FIXED) ---
+          // Wrapped in FittedBox to prevent "Right overflowed" error
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(5, (index) {
+                return IconButton(
+                  onPressed: () {
+                    setState(() => _rating = index + 1.0);
+                  },
+                  icon: Icon(
+                    index < _rating ? Icons.star : Icons.star_border,
+                    color: Colors.amber,
+                    size: 32,
+                  ),
+                );
+              }),
+            ),
           ),
 
           const SizedBox(height: 20),
