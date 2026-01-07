@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart'; // Add intl to pubspec.yaml for date formatting
+import 'package:intl/intl.dart';
 import 'public_profile_page.dart';
 import 'job_details_page.dart';
 
@@ -41,68 +41,76 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
   }
 
-  // --- NEW: Helper to fetch User and Job details dynamically ---
+  // --- FIXED: Smart Helper to fetch User and Job details ---
   Future<Map<String, dynamic>> _fetchNotificationDetails(
-      Map<String, dynamic> notifData) async {
-    String? targetUserId; // The person we want to show (Poster or Applicant)
+    Map<String, dynamic> notifData,
+  ) async {
+    String? targetUserId;
     String? jobId = notifData['jobId'];
-
-    // 1. Determine who to show based on mode
-    if (widget.isEmployerMode) {
-      // Employer wants to see the APPLICANT
-      targetUserId = notifData['applicantId'];
-    } else {
-      // Applicant wants to see the POSTER
-      targetUserId = notifData['posterId'];
-    }
+    // Default title if missing
+    String notifTitle = notifData['title'] ?? 'Job Update';
 
     Map<String, dynamic> result = {
       'userName': 'Unknown User',
       'userPhoto': '',
       'userRating': 0.0,
-      'jobTitle': notifData['title'] ?? 'Job Update', // Fallback
+      'jobTitle': notifTitle,
     };
 
-    // 2. Fetch User Data (Profile, Name, Rating)
-    if (targetUserId != null && targetUserId.isNotEmpty) {
-      try {
-        DocumentSnapshot userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(targetUserId)
-            .get();
-        
-        if (userDoc.exists) {
-          final userData = userDoc.data() as Map<String, dynamic>;
-          
-          // Name logic
-          String name = userData['name'] ?? userData['fullName'] ?? "User";
-          // Rating logic
-          double rating = (userData['rating'] is num) 
-              ? (userData['rating'] as num).toDouble() 
-              : 0.0;
-              
-          result['userName'] = name;
-          result['userPhoto'] = userData['photoUrl'] ?? "";
-          result['userRating'] = rating;
-        }
-      } catch (e) {
-        debugPrint("Error fetching user: $e");
-      }
-    }
-
-    // 3. Fetch Job Data (Title)
+    // 1. Fetch Job Data FIRST (To get Job Title & Backup Poster ID)
     if (jobId != null && jobId.isNotEmpty) {
       try {
         DocumentSnapshot jobDoc = await FirebaseFirestore.instance
             .collection('jobs')
             .doc(jobId)
             .get();
+
         if (jobDoc.exists) {
           final jobData = jobDoc.data() as Map<String, dynamic>;
           result['jobTitle'] = jobData['title'] ?? result['jobTitle'];
+
+          // CRITICAL FIX: If notification is missing the posterId, grab it from the Job!
+          if (!widget.isEmployerMode &&
+              (notifData['posterId'] == null || notifData['posterId'] == "")) {
+            targetUserId = jobData['postedBy'];
+          }
         }
       } catch (e) {
         debugPrint("Error fetching job: $e");
+      }
+    }
+
+    // 2. Determine target user if not already found via fallback above
+    if (targetUserId == null) {
+      if (widget.isEmployerMode) {
+        targetUserId = notifData['applicantId'];
+      } else {
+        targetUserId = notifData['posterId'];
+      }
+    }
+
+    // 3. Fetch User Data (Profile, Name, Rating)
+    if (targetUserId != null && targetUserId.isNotEmpty) {
+      try {
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(targetUserId)
+            .get();
+
+        if (userDoc.exists) {
+          final userData = userDoc.data() as Map<String, dynamic>;
+
+          String name = userData['name'] ?? userData['fullName'] ?? "User";
+          double rating = (userData['rating'] is num)
+              ? (userData['rating'] as num).toDouble()
+              : 0.0;
+
+          result['userName'] = name;
+          result['userPhoto'] = userData['photoUrl'] ?? "";
+          result['userRating'] = rating;
+        }
+      } catch (e) {
+        debugPrint("Error fetching user: $e");
       }
     }
 
@@ -145,19 +153,29 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 }
 
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text("No notifications found.", style: TextStyle(color: Colors.grey)));
+                  return const Center(
+                    child: Text(
+                      "No notifications found.",
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  );
                 }
 
-                // FILTERING LOGIC (Kept from your code)
+                // FILTERING LOGIC
                 final filteredDocs = snapshot.data!.docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   final type = data['type'];
                   final posterId = data['posterId'];
 
+                  if (type == null) return false;
+
                   if (widget.isEmployerMode) {
+                    // Employers only see applications
                     return type == 'application';
                   } else {
+                    // Applicants see new posts, hires, rejections
                     if (type == 'new_post') {
+                      // Don't notify me about my own posts
                       return posterId != uid;
                     }
                     return ['hired', 'rejected', 'new_post'].contains(type);
@@ -165,65 +183,96 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 }).toList();
 
                 if (filteredDocs.isEmpty) {
-                  return const Center(child: Text("No new notifications.", style: TextStyle(color: Colors.grey)));
+                  return const Center(
+                    child: Text(
+                      "No new notifications.",
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  );
                 }
 
-                // SORTING
+                // SORTING (Newest First)
                 filteredDocs.sort((a, b) {
-                  Timestamp t1 = a['timestamp'] ?? Timestamp.now();
-                  Timestamp t2 = b['timestamp'] ?? Timestamp.now();
+                  Timestamp t1 =
+                      (a.data() as Map)['timestamp'] ?? Timestamp.now();
+                  Timestamp t2 =
+                      (b.data() as Map)['timestamp'] ?? Timestamp.now();
                   return t2.compareTo(t1);
                 });
 
                 return ListView.separated(
                   padding: const EdgeInsets.all(16),
                   itemCount: filteredDocs.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 10),
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final doc = filteredDocs[index];
                     final data = doc.data() as Map<String, dynamic>;
-                    
-                    // Basic Notification Data
+
                     final String applicantId = data['applicantId'] ?? "";
                     final String? jobId = data['jobId'];
                     final bool isRead = data['read'] ?? false;
                     final String type = data['type'] ?? 'application';
                     final String recipientId = data['recipientId'] ?? "";
-                    final Timestamp timestamp = data['timestamp'] ?? Timestamp.now();
+                    final Timestamp timestamp =
+                        data['timestamp'] ?? Timestamp.now();
 
-                    // --- SWIPE TO DELETE (Kept from your code) ---
+                    // --- SWIPE TO DELETE ---
                     return Dismissible(
                       key: Key(doc.id),
                       direction: DismissDirection.endToStart,
                       background: Container(
                         alignment: Alignment.centerRight,
                         padding: const EdgeInsets.only(right: 20),
-                        decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(12)),
-                        child: const Icon(Icons.delete, color: Colors.white, size: 30),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.delete,
+                          color: Colors.white,
+                          size: 30,
+                        ),
                       ),
                       confirmDismiss: (direction) async {
-                         if (recipientId == 'all') {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("System notifications cannot be deleted.")));
+                        if (recipientId == 'all') {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                "System notifications cannot be deleted.",
+                              ),
+                            ),
+                          );
                           return false;
                         }
                         return true;
                       },
                       onDismissed: (direction) async {
-                        await FirebaseFirestore.instance.collection('notifications').doc(doc.id).delete();
+                        await FirebaseFirestore.instance
+                            .collection('notifications')
+                            .doc(doc.id)
+                            .delete();
                       },
-                      
-                      // --- UPDATED CHILD WITH FUTURE BUILDER ---
+
                       child: GestureDetector(
                         onTap: () async {
-                           // Mark as read
+                          // Mark as read
                           if (data['recipientId'] != 'all') {
-                            await FirebaseFirestore.instance.collection('notifications').doc(doc.id).update({'read': true});
+                            await FirebaseFirestore.instance
+                                .collection('notifications')
+                                .doc(doc.id)
+                                .update({'read': true});
                           }
                           // Navigation Logic
                           if (jobId != null) {
-                            if (widget.isEmployerMode && applicantId.isNotEmpty) {
+                            if (widget.isEmployerMode &&
+                                applicantId.isNotEmpty) {
                               _navigateToProfile(context, applicantId, jobId);
-                            } else if (['new_post', 'hired', 'rejected'].contains(type)) {
+                            } else if ([
+                              'new_post',
+                              'hired',
+                              'rejected',
+                            ].contains(type)) {
                               _navigateToJob(context, jobId, type);
                             }
                           }
@@ -231,21 +280,53 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         child: FutureBuilder<Map<String, dynamic>>(
                           future: _fetchNotificationDetails(data),
                           builder: (context, detailsSnapshot) {
-                            // Defaults while loading
+                            // Defaults
                             String name = "Loading...";
                             String photo = "";
                             String jobTitle = "Loading...";
                             double rating = 0.0;
-                            
-                            if (detailsSnapshot.hasData) {
-                              name = detailsSnapshot.data!['userName'];
-                              photo = detailsSnapshot.data!['userPhoto'];
-                              jobTitle = detailsSnapshot.data!['jobTitle'];
-                              rating = detailsSnapshot.data!['userRating'];
+
+                            if (detailsSnapshot.connectionState ==
+                                ConnectionState.done) {
+                              if (detailsSnapshot.hasData) {
+                                name = detailsSnapshot.data!['userName'];
+                                photo = detailsSnapshot.data!['userPhoto'];
+                                jobTitle = detailsSnapshot.data!['jobTitle'];
+                                rating = detailsSnapshot.data!['userRating'];
+                              } else {
+                                name = "User";
+                                jobTitle = "Job Post";
+                              }
                             }
 
-                            // Format Time (e.g., "2 hrs ago" or simple Date)
-                            String timeString = DateFormat('MMM d, h:mm a').format(timestamp.toDate());
+                            // Format Time
+                            String timeString = "";
+                            try {
+                              timeString = DateFormat(
+                                'MMM d, h:mm a',
+                              ).format(timestamp.toDate());
+                            } catch (e) {
+                              timeString = "Just now";
+                            }
+
+                            // --- CORRECT TEXT LOGIC ---
+                            String actionText = "Posted: ";
+                            Color actionColor = Colors.black;
+
+                            if (widget.isEmployerMode) {
+                              actionText = "Applied for: ";
+                            } else {
+                              if (type == 'hired') {
+                                actionText = "Hired you for: ";
+                                actionColor = Colors.green;
+                              } else if (type == 'rejected') {
+                                actionText = "Application Rejected: ";
+                                actionColor = Colors.red;
+                              } else if (type == 'new_post') {
+                                actionText = "New Job: ";
+                                actionColor = const Color(0xFF2E7EFF);
+                              }
+                            }
 
                             return Container(
                               padding: const EdgeInsets.all(12),
@@ -259,8 +340,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                       color: Colors.blue.withOpacity(0.1),
                                       blurRadius: 8,
                                       offset: const Offset(0, 2),
-                                    )
-                                ]
+                                    ),
+                                ],
                               ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,27 +350,41 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                   Container(
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      border: Border.all(color: Colors.grey.shade300),
+                                      border: Border.all(
+                                        color: Colors.grey.shade300,
+                                      ),
                                     ),
                                     child: CircleAvatar(
                                       radius: 24,
                                       backgroundColor: Colors.grey[200],
-                                      backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
-                                      child: photo.isEmpty 
-                                        ? Text(name.isNotEmpty ? name[0].toUpperCase() : "?", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))
-                                        : null,
+                                      backgroundImage: photo.isNotEmpty
+                                          ? NetworkImage(photo)
+                                          : null,
+                                      child: photo.isEmpty
+                                          ? Text(
+                                              name.isNotEmpty
+                                                  ? name[0].toUpperCase()
+                                                  : "?",
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.grey,
+                                              ),
+                                            )
+                                          : null,
                                     ),
                                   ),
                                   const SizedBox(width: 12),
-                                  
+
                                   // 2. TEXT CONTENT
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         // Top Row: Name and Rating
                                         Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
                                           children: [
                                             Expanded(
                                               child: Text(
@@ -304,58 +399,90 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                             ),
                                             // RATING BADGE
                                             if (rating > 0)
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: Colors.amber[100],
-                                                borderRadius: BorderRadius.circular(8),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.amber[100],
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                                child: Row(
+                                                  children: [
+                                                    const Icon(
+                                                      Icons.star,
+                                                      size: 12,
+                                                      color: Colors.amber,
+                                                    ),
+                                                    const SizedBox(width: 2),
+                                                    Text(
+                                                      rating.toStringAsFixed(1),
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        color:
+                                                            Colors.amber[900],
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
-                                              child: Row(
-                                                children: [
-                                                  const Icon(Icons.star, size: 12, color: Colors.amber),
-                                                  const SizedBox(width: 2),
-                                                  Text(
-                                                    rating.toStringAsFixed(1),
-                                                    style: TextStyle(fontSize: 11, color: Colors.amber[900], fontWeight: FontWeight.bold),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
                                           ],
                                         ),
-                                        
+
                                         const SizedBox(height: 4),
-                                        
-                                        // Middle: Interaction Text (Job Title)
+
+                                        // Middle: Interaction Text (Corrected Logic)
                                         RichText(
                                           text: TextSpan(
-                                            style: TextStyle(color: Colors.grey[800], fontSize: 13),
+                                            style: TextStyle(
+                                              color: Colors.grey[800],
+                                              fontSize: 13,
+                                            ),
                                             children: [
-                                              TextSpan(text: widget.isEmployerMode ? "Applied for: " : "Posted: "),
+                                              TextSpan(
+                                                text: actionText,
+                                                style: TextStyle(
+                                                  color: actionColor,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
                                               TextSpan(
                                                 text: jobTitle,
-                                                style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2E7EFF)),
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                ),
                                               ),
                                             ],
                                           ),
                                         ),
 
                                         const SizedBox(height: 6),
-                                        
+
                                         // Bottom: Timestamp
                                         Text(
                                           timeString,
-                                          style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                                          style: TextStyle(
+                                            color: Colors.grey[500],
+                                            fontSize: 11,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  
+
                                   // Unread Dot
                                   if (!isRead)
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 8, top: 5),
-                                      child: CircleAvatar(radius: 4, backgroundColor: Colors.redAccent),
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 8, top: 5),
+                                      child: CircleAvatar(
+                                        radius: 4,
+                                        backgroundColor: Colors.redAccent,
+                                      ),
                                     ),
                                 ],
                               ),
@@ -371,12 +498,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
     );
   }
 
-  // --- HELPER 1: Navigate to Job Details (UNCHANGED) ---
-  void _navigateToJob(BuildContext context, String jobId, String notificationType) async {
-    // ... [Copy your exact _navigateToJob code here] ...
-    // (I am omitting the body to save space as you requested not to delete logic, 
-    // just paste your existing function here)
-      try {
+  // --- HELPER 1: Navigate to Job Details ---
+  void _navigateToJob(
+    BuildContext context,
+    String jobId,
+    String notificationType,
+  ) async {
+    try {
       DocumentSnapshot jobDoc = await FirebaseFirestore.instance
           .collection('jobs')
           .doc(jobId)
@@ -415,9 +543,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
   }
 
-  // --- HELPER 2: Navigate to Profile (UNCHANGED) ---
-  void _navigateToProfile(BuildContext context, String userId, String? jobId) async {
-     // ... [Copy your exact _navigateToProfile code here] ...
+  // --- HELPER 2: Navigate to Profile ---
+  void _navigateToProfile(
+    BuildContext context,
+    String userId,
+    String? jobId,
+  ) async {
     String finalName = "Applicant";
     String? finalJobTitle;
 

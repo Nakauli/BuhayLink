@@ -216,7 +216,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
               ],
-            ),
+            ),  
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
