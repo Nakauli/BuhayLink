@@ -46,7 +46,7 @@ class _DashboardPageState extends State<DashboardPage> {
   // --- NOTIFICATION STREAMS ---
   Stream<int>? _chatBadgeStream;
   Stream<int>? _profileBadgeStream;
-  Stream<int>? _homeBadgeStream; // <--- NEW: Stream for Home icon
+  Stream<int>? _homeBadgeStream;
 
   @override
   void initState() {
@@ -60,14 +60,12 @@ class _DashboardPageState extends State<DashboardPage> {
     if (uid == null) return;
 
     // 1. HOME BADGE (New Job Posts)
-    // Listens for 'job_post' or 'new_post' notifications
     _homeBadgeStream = FirebaseFirestore.instance
         .collection('notifications')
         .where('recipientId', whereIn: [uid, 'all'])
         .where('read', isEqualTo: false)
         .snapshots()
         .map((snapshot) {
-          // Count only job-related notifications
           return snapshot.docs.where((doc) {
             final type = doc.data()['type'] as String?;
             return type == 'job_post' || type == 'new_post';
@@ -97,8 +95,6 @@ class _DashboardPageState extends State<DashboardPage> {
         .where('read', isEqualTo: false)
         .snapshots()
         .map((snapshot) {
-          // Exclude job posts from profile badge to avoid double counting if desired
-          // or just count specific profile events like 'hired', 'review'
           return snapshot.docs.where((doc) {
             final type = doc.data()['type'] as String?;
             return type != 'job_post' && type != 'new_post';
@@ -243,7 +239,6 @@ class _DashboardPageState extends State<DashboardPage> {
   void _onTabTapped(int index) {
     if (_selectedIndex == index) return;
 
-    // NEW: If Home is clicked, mark new job notifications as read
     if (index == 0) {
       _markAsRead(['job_post', 'new_post']);
     }
@@ -290,7 +285,6 @@ class _DashboardPageState extends State<DashboardPage> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // --- HOME WITH BADGE ---
                   StreamBuilder<int>(
                     stream: _homeBadgeStream,
                     builder: (context, snapshot) {
@@ -303,16 +297,12 @@ class _DashboardPageState extends State<DashboardPage> {
                       );
                     },
                   ),
-
                   _buildNavBarItem(1, Icons.search_rounded, "Search"),
-
                   _buildMiddleNavBarItem(
                     2,
                     _showMyPosts ? Icons.add_rounded : Icons.assignment_rounded,
                     _showMyPosts ? "Post" : "Applied",
                   ),
-
-                  // --- CHAT WITH BADGE ---
                   StreamBuilder<int>(
                     stream: _chatBadgeStream,
                     builder: (context, snapshot) {
@@ -325,8 +315,6 @@ class _DashboardPageState extends State<DashboardPage> {
                       );
                     },
                   ),
-
-                  // --- PROFILE WITH BADGE ---
                   StreamBuilder<int>(
                     stream: _profileBadgeStream,
                     builder: (context, snapshot) {
@@ -348,7 +336,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- HOME CONTENT ---
   Widget _buildHomeWithHeader() {
     return Column(
       children: [
@@ -403,8 +390,6 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
         const SizedBox(height: 8),
-
-        // --- JOB LIST ---
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async {
@@ -541,7 +526,6 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  // --- UI HELPER: NAV BAR ITEM WITH BADGE ---
   Widget _buildNavBarItem(
     int index,
     IconData icon,
@@ -549,8 +533,6 @@ class _DashboardPageState extends State<DashboardPage> {
     bool showBadge = false,
   }) {
     final isSelected = _selectedIndex == index;
-
-    // Visually hide badge if currently selected
     final bool displayBadge = showBadge && !isSelected;
 
     return Expanded(
@@ -654,6 +636,46 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  Widget _buildToggleButton(String text, bool isActive) {
+    return GestureDetector(
+      onTap: () {
+        if (text == "My Posts" && !_showMyPosts) {
+          setState(() {
+            _showMyPosts = true;
+            _selectedFilter = "All";
+            _pageCursors.clear();
+            _pageCursors[1] = null;
+            _fetchJobs(page: 1);
+          });
+        } else if (text == "Find Jobs" && _showMyPosts) {
+          setState(() {
+            _showMyPosts = false;
+            _selectedFilter = "All";
+            _pageCursors.clear();
+            _pageCursors[1] = null;
+            _fetchJobs(page: 1);
+          });
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF2E7EFF) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: isActive ? Colors.white : Colors.grey,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFilterChip(String label, {IconData? icon}) {
     bool isActive = _selectedFilter == label;
     return GestureDetector(
@@ -712,49 +734,9 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
-
-  Widget _buildToggleButton(String text, bool isActive) {
-    return GestureDetector(
-      onTap: () {
-        if (text == "My Posts" && !_showMyPosts) {
-          setState(() {
-            _showMyPosts = true;
-            _selectedFilter = "All";
-            _pageCursors.clear();
-            _pageCursors[1] = null;
-            _fetchJobs(page: 1);
-          });
-        } else if (text == "Find Jobs" && _showMyPosts) {
-          setState(() {
-            _showMyPosts = false;
-            _selectedFilter = "All";
-            _pageCursors.clear();
-            _pageCursors[1] = null;
-            _fetchJobs(page: 1);
-          });
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF2E7EFF) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Center(
-          child: Text(
-            text,
-            style: TextStyle(
-              color: isActive ? Colors.white : Colors.grey,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
-// ... (Keep existing _AnimatedHeader) ...
+// --- FIXED _AnimatedHeader ---
 class _AnimatedHeader extends StatefulWidget {
   final DashboardRepository repository;
   final bool showMyPosts;
@@ -855,7 +837,9 @@ class _AnimatedHeaderState extends State<_AnimatedHeader> {
                     if (snapshot.hasData && snapshot.data!.exists) {
                       final data =
                           snapshot.data!.data() as Map<String, dynamic>?;
+                      // FIXED LOGIC: Check 'name' first!
                       final String realName =
+                          data?['name'] ??
                           data?['fullName'] ??
                           data?['firstName'] ??
                           data?['username'] ??
