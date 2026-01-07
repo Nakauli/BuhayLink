@@ -29,26 +29,81 @@ class _DashboardPageState extends State<DashboardPage> {
   final List<int> _navigationHistory = [0];
 
   // --- PAGINATION STATE ---
-  final int _jobsPerPage = 20; // Changed to 20 as requested
+  final int _jobsPerPage = 20;
   List<DocumentSnapshot> _jobs = [];
   bool _isJobsLoading = false;
 
   // Page Tracking
   int _currentPage = 1;
-  // Stores the "startAfter" document for each page so we can go back accurately
-  // Key: Page Number, Value: The DocumentSnapshot to start AFTER
   final Map<int, DocumentSnapshot?> _pageCursors = {1: null};
-  bool _hasNextPage = true; // Assumes true until we fetch less than limit
+  bool _hasNextPage = true;
 
   final ScrollController _scrollController = ScrollController();
 
   bool _showMyPosts = false;
   String _selectedFilter = "All";
 
+  // --- NOTIFICATION STREAMS ---
+  Stream<int>? _chatBadgeStream;
+  Stream<int>? _profileBadgeStream;
+  Stream<int>? _homeBadgeStream; // <--- NEW: Stream for Home icon
+
   @override
   void initState() {
     super.initState();
     _fetchJobs(page: 1);
+    _setupBadgeStreams();
+  }
+
+  void _setupBadgeStreams() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    // 1. HOME BADGE (New Job Posts)
+    // Listens for 'job_post' or 'new_post' notifications
+    _homeBadgeStream = FirebaseFirestore.instance
+        .collection('notifications')
+        .where('recipientId', whereIn: [uid, 'all'])
+        .where('read', isEqualTo: false)
+        .snapshots()
+        .map((snapshot) {
+          // Count only job-related notifications
+          return snapshot.docs.where((doc) {
+            final type = doc.data()['type'] as String?;
+            return type == 'job_post' || type == 'new_post';
+          }).length;
+        });
+
+    // 2. CHAT BADGE
+    _chatBadgeStream = FirebaseFirestore.instance
+        .collection('chats')
+        .where('participants', arrayContains: uid)
+        .snapshots()
+        .map((snapshot) {
+          int count = 0;
+          for (var doc in snapshot.docs) {
+            final data = doc.data();
+            if (data['lastSenderId'] != uid && data['isRead'] == false) {
+              count++;
+            }
+          }
+          return count;
+        });
+
+    // 3. PROFILE BADGE
+    _profileBadgeStream = FirebaseFirestore.instance
+        .collection('notifications')
+        .where('recipientId', isEqualTo: uid)
+        .where('read', isEqualTo: false)
+        .snapshots()
+        .map((snapshot) {
+          // Exclude job posts from profile badge to avoid double counting if desired
+          // or just count specific profile events like 'hired', 'review'
+          return snapshot.docs.where((doc) {
+            final type = doc.data()['type'] as String?;
+            return type != 'job_post' && type != 'new_post';
+          }).length;
+        });
   }
 
   @override
@@ -74,20 +129,17 @@ class _DashboardPageState extends State<DashboardPage> {
         query = query.where('postedBy', isEqualTo: user.uid);
       }
 
-      // Get the cursor for this specific page
       DocumentSnapshot? startAfterDoc = _pageCursors[page];
 
       if (startAfterDoc != null) {
         query = query.startAfterDocument(startAfterDoc);
       }
 
-      // Fetch 1 extra item to check if a "Next Page" exists, then remove it from display
       QuerySnapshot snapshot = await query.limit(_jobsPerPage).get();
 
       if (snapshot.docs.isNotEmpty) {
         var newJobs = snapshot.docs;
 
-        // Client-Side Filtering (Hide My Posts in "Find Jobs")
         if (!_showMyPosts && user != null) {
           newJobs = newJobs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
@@ -95,7 +147,6 @@ class _DashboardPageState extends State<DashboardPage> {
           }).toList();
         }
 
-        // Quick Filters
         if (!_showMyPosts) {
           if (_selectedFilter == "Urgent") {
             newJobs = newJobs
@@ -122,18 +173,12 @@ class _DashboardPageState extends State<DashboardPage> {
         setState(() {
           _jobs = newJobs;
           _currentPage = page;
-
-          // Determine if Next Page is possible
-          // If we got full limit, we assume there might be more
           _hasNextPage = snapshot.docs.length == _jobsPerPage;
-
-          // Save the cursor for the NEXT page (Page + 1)
           if (snapshot.docs.isNotEmpty) {
             _pageCursors[page + 1] = snapshot.docs.last;
           }
         });
 
-        // Scroll to top when page changes
         if (_scrollController.hasClients) {
           _scrollController.animateTo(
             0,
@@ -170,7 +215,6 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  // ... (Keep existing helpers: _markAsRead, _onTabTapped, _buildNavBarItem, etc.) ...
   Future<void> _markAsRead(List<String> types) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -198,6 +242,12 @@ class _DashboardPageState extends State<DashboardPage> {
 
   void _onTabTapped(int index) {
     if (_selectedIndex == index) return;
+
+    // NEW: If Home is clicked, mark new job notifications as read
+    if (index == 0) {
+      _markAsRead(['job_post', 'new_post']);
+    }
+
     setState(() {
       _selectedIndex = index;
       _navigationHistory.add(index);
@@ -240,15 +290,55 @@ class _DashboardPageState extends State<DashboardPage> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _buildNavBarItem(0, Icons.home_rounded, "Home"),
+                  // --- HOME WITH BADGE ---
+                  StreamBuilder<int>(
+                    stream: _homeBadgeStream,
+                    builder: (context, snapshot) {
+                      bool showBadge = (snapshot.data ?? 0) > 0;
+                      return _buildNavBarItem(
+                        0,
+                        Icons.home_rounded,
+                        "Home",
+                        showBadge: showBadge,
+                      );
+                    },
+                  ),
+
                   _buildNavBarItem(1, Icons.search_rounded, "Search"),
+
                   _buildMiddleNavBarItem(
                     2,
                     _showMyPosts ? Icons.add_rounded : Icons.assignment_rounded,
                     _showMyPosts ? "Post" : "Applied",
                   ),
-                  _buildNavBarItem(3, Icons.chat_bubble_rounded, "Chat"),
-                  _buildNavBarItem(4, Icons.person_rounded, "Profile"),
+
+                  // --- CHAT WITH BADGE ---
+                  StreamBuilder<int>(
+                    stream: _chatBadgeStream,
+                    builder: (context, snapshot) {
+                      bool showBadge = (snapshot.data ?? 0) > 0;
+                      return _buildNavBarItem(
+                        3,
+                        Icons.chat_bubble_rounded,
+                        "Chat",
+                        showBadge: showBadge,
+                      );
+                    },
+                  ),
+
+                  // --- PROFILE WITH BADGE ---
+                  StreamBuilder<int>(
+                    stream: _profileBadgeStream,
+                    builder: (context, snapshot) {
+                      bool showBadge = (snapshot.data ?? 0) > 0;
+                      return _buildNavBarItem(
+                        4,
+                        Icons.person_rounded,
+                        "Profile",
+                        showBadge: showBadge,
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
@@ -258,9 +348,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // ---------------------------------------------------------
-  // HOME CONTENT
-  // ---------------------------------------------------------
+  // --- HOME CONTENT ---
   Widget _buildHomeWithHeader() {
     return Column(
       children: [
@@ -320,7 +408,6 @@ class _DashboardPageState extends State<DashboardPage> {
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async {
-              // Reset pagination on pull-to-refresh
               _pageCursors.clear();
               _pageCursors[1] = null;
               await _fetchJobs(page: 1);
@@ -351,21 +438,16 @@ class _DashboardPageState extends State<DashboardPage> {
                     controller: _scrollController,
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(24, 10, 24, 30),
-                    // Add +1 for the Pagination Controls at the bottom
                     itemCount: _jobs.length + 1,
                     separatorBuilder: (_, __) => const SizedBox(height: 16),
                     itemBuilder: (context, index) {
-                      // --- PAGINATION CONTROLS (At Bottom) ---
                       if (index == _jobs.length) {
-                        // Don't show controls if list is empty or very short and no next page
                         if (_jobs.isEmpty) return const SizedBox.shrink();
-
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 20),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              // LEFT ARROW (Previous)
                               IconButton(
                                 onPressed: _currentPage > 1 ? _prevPage : null,
                                 icon: const Icon(Icons.arrow_back_ios_rounded),
@@ -373,10 +455,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                     ? const Color(0xFF2E7EFF)
                                     : Colors.grey[300],
                               ),
-
                               const SizedBox(width: 20),
-
-                              // PAGE NUMBER
                               Text(
                                 "Page $_currentPage",
                                 style: const TextStyle(
@@ -385,10 +464,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                   color: Colors.black87,
                                 ),
                               ),
-
                               const SizedBox(width: 20),
-
-                              // RIGHT ARROW (Next)
                               IconButton(
                                 onPressed: _hasNextPage ? _nextPage : null,
                                 icon: const Icon(
@@ -403,7 +479,6 @@ class _DashboardPageState extends State<DashboardPage> {
                         );
                       }
 
-                      // --- JOB CARD ---
                       final doc = _jobs[index];
                       final data = doc.data() as Map<String, dynamic>;
                       final String jobId = doc.id;
@@ -449,8 +524,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // ... (Rest of existing methods unchanged: _getBodyContent, _buildFilterChip, _buildToggleButton, _buildNavBarItem, _buildMiddleNavBarItem, _AnimatedHeader) ...
-
   Widget _getBodyContent() {
     switch (_selectedIndex) {
       case 1:
@@ -468,110 +541,18 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  Widget _buildFilterChip(String label, {IconData? icon}) {
-    bool isActive = _selectedFilter == label;
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedFilter = label;
-          // Reset to page 1 on filter change
-          _pageCursors.clear();
-          _pageCursors[1] = null;
-          _fetchJobs(page: 1);
-        });
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: isActive
-              ? const LinearGradient(
-                  colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : null,
-          color: isActive ? null : Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: isActive
-                  ? const Color(0xFF2E7EFF).withOpacity(0.4)
-                  : Colors.grey.withOpacity(0.1),
-              blurRadius: isActive ? 10 : 5,
-              offset: const Offset(0, 4),
-            ),
-          ],
-          border: isActive ? null : Border.all(color: Colors.grey.shade200),
-        ),
-        child: Row(
-          children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: 16,
-                color: isActive ? Colors.white : Colors.grey[600],
-              ),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                color: isActive ? Colors.white : Colors.grey[700],
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildToggleButton(String text, bool isActive) {
-    return GestureDetector(
-      onTap: () {
-        if (text == "My Posts" && !_showMyPosts) {
-          setState(() {
-            _showMyPosts = true;
-            _selectedFilter = "All";
-            // Reset to page 1
-            _pageCursors.clear();
-            _pageCursors[1] = null;
-            _fetchJobs(page: 1);
-          });
-        } else if (text == "Find Jobs" && _showMyPosts) {
-          setState(() {
-            _showMyPosts = false;
-            _selectedFilter = "All";
-            // Reset to page 1
-            _pageCursors.clear();
-            _pageCursors[1] = null;
-            _fetchJobs(page: 1);
-          });
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF2E7EFF) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Center(
-          child: Text(
-            text,
-            style: TextStyle(
-              color: isActive ? Colors.white : Colors.grey,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavBarItem(int index, IconData icon, String label) {
+  // --- UI HELPER: NAV BAR ITEM WITH BADGE ---
+  Widget _buildNavBarItem(
+    int index,
+    IconData icon,
+    String label, {
+    bool showBadge = false,
+  }) {
     final isSelected = _selectedIndex == index;
+
+    // Visually hide badge if currently selected
+    final bool displayBadge = showBadge && !isSelected;
+
     return Expanded(
       child: GestureDetector(
         onTap: () => _onTabTapped(index),
@@ -579,15 +560,35 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              transform: Matrix4.identity()..scale(isSelected ? 1.1 : 1.0),
-              child: Icon(
-                icon,
-                color: isSelected ? const Color(0xFF2E7EFF) : Colors.grey[400],
-                size: 26,
-              ),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  transform: Matrix4.identity()..scale(isSelected ? 1.1 : 1.0),
+                  child: Icon(
+                    icon,
+                    color: isSelected
+                        ? const Color(0xFF2E7EFF)
+                        : Colors.grey[400],
+                    size: 26,
+                  ),
+                ),
+                if (displayBadge)
+                  Positioned(
+                    right: -2,
+                    top: -2,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 4),
             Text(
@@ -652,8 +653,108 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
+
+  Widget _buildFilterChip(String label, {IconData? icon}) {
+    bool isActive = _selectedFilter == label;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedFilter = label;
+          _pageCursors.clear();
+          _pageCursors[1] = null;
+          _fetchJobs(page: 1);
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          gradient: isActive
+              ? const LinearGradient(
+                  colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: isActive ? null : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: isActive
+                  ? const Color(0xFF2E7EFF).withOpacity(0.4)
+                  : Colors.grey.withOpacity(0.1),
+              blurRadius: isActive ? 10 : 5,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: isActive ? null : Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 16,
+                color: isActive ? Colors.white : Colors.grey[600],
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? Colors.white : Colors.grey[700],
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToggleButton(String text, bool isActive) {
+    return GestureDetector(
+      onTap: () {
+        if (text == "My Posts" && !_showMyPosts) {
+          setState(() {
+            _showMyPosts = true;
+            _selectedFilter = "All";
+            _pageCursors.clear();
+            _pageCursors[1] = null;
+            _fetchJobs(page: 1);
+          });
+        } else if (text == "Find Jobs" && _showMyPosts) {
+          setState(() {
+            _showMyPosts = false;
+            _selectedFilter = "All";
+            _pageCursors.clear();
+            _pageCursors[1] = null;
+            _fetchJobs(page: 1);
+          });
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF2E7EFF) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: isActive ? Colors.white : Colors.grey,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
+// ... (Keep existing _AnimatedHeader) ...
 class _AnimatedHeader extends StatefulWidget {
   final DashboardRepository repository;
   final bool showMyPosts;
