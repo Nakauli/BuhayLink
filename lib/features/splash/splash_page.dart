@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:buhay_link/app.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -16,6 +17,10 @@ class _SplashScreenState extends State<SplashScreen>
   final double gearTopPosition = 135.0;
   final double gearRightPosition = 75.0;
   final double gearSize = 60.0;
+
+  // 🔊 AUDIO SETTINGS
+  // Make sure you have 'assets/sounds/intro.mp3' in your project
+  final String soundFile = 'sounds/intro.mp3';
 
   // 🎨 BRANDING: Deep Premium Blue Gradient
   final List<Color> gradientColors = [
@@ -36,9 +41,15 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _gearTurns;
   late Animation<double> _effectIntensity;
 
+  // 2. DEFINE THE PLAYER
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
   @override
   void initState() {
     super.initState();
+
+    // 3. PLAY SOUND ON START
+    _playIntroSound();
 
     // 1. ENTRANCE (0s - 2s)
     _entranceController = AnimationController(
@@ -109,14 +120,23 @@ class _SplashScreenState extends State<SplashScreen>
       }
     });
 
-    // Navigate after effect completes
+    // Navigate immediately when effect completes (Instant Cut)
     _effectController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          _navigateToAuthGate();
-        });
+        _navigateToAuthGate();
       }
     });
+  }
+
+  // 4. AUDIO HELPER FUNCTION
+  Future<void> _playIntroSound() async {
+    try {
+      // Set volume to 1.0 (max) just in case
+      await _audioPlayer.setVolume(1.0);
+      await _audioPlayer.play(AssetSource(soundFile));
+    } catch (e) {
+      debugPrint("Error playing sound: $e");
+    }
   }
 
   void _navigateToAuthGate() {
@@ -124,10 +144,8 @@ class _SplashScreenState extends State<SplashScreen>
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
           pageBuilder: (_, __, ___) => const AuthGate(),
-          transitionsBuilder: (_, animation, __, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-          transitionDuration: const Duration(milliseconds: 800),
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: Duration.zero,
         ),
       );
     }
@@ -138,6 +156,7 @@ class _SplashScreenState extends State<SplashScreen>
     _entranceController.dispose();
     _gearController.dispose();
     _effectController.dispose();
+    _audioPlayer.dispose(); // 5. DISPOSE PLAYER
     super.dispose();
   }
 
@@ -171,17 +190,14 @@ class _SplashScreenState extends State<SplashScreen>
             child: AnimatedBuilder(
               animation: _effectIntensity,
               builder: (context, child) {
-                // This Filter applies WHITE over everything based on intensity
                 return ColorFiltered(
                   colorFilter: ColorFilter.mode(
                     Colors.white.withOpacity(_effectIntensity.value),
-                    BlendMode
-                        .srcATop, // Keeps transparency, paints visible pixels white
+                    BlendMode.srcATop,
                   ),
                   child: child,
                 );
               },
-              // The Content to be whitened
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -219,9 +235,7 @@ class _SplashScreenState extends State<SplashScreen>
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 20),
-
                   SlideTransition(
                     position: _textSlideIn,
                     child: FadeTransition(
