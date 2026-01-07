@@ -1,8 +1,5 @@
-import 'package:buhay_link/features/home/presentation/pages/dashboard_page.dart';
 import 'package:flutter/material.dart';
-import 'dart:async';
-import 'package:buhay_link/features/auth/presentation/pages/login_page.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:buhay_link/app.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -13,89 +10,120 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
-  // Controllers
+  // ========================================================
+  // 🎛️ CONTROL PANEL
+  // ========================================================
+  final double gearTopPosition = 135.0;
+  final double gearRightPosition = 75.0;
+  final double gearSize = 60.0;
+
+  // 🎨 BRANDING: Deep Premium Blue Gradient
+  final List<Color> gradientColors = [
+    const Color(0xFF0D47A1), // Deep Royal Blue (Top)
+    const Color(0xFF42A5F5), // Bright Blue (Bottom)
+  ];
+  // ========================================================
+
   late AnimationController _entranceController;
   late AnimationController _gearController;
+  late AnimationController _effectController;
 
-  // Animations
-  late Animation<double> _blFade;
-  late Animation<double> _blScale;
-  late Animation<double> _textFade;
-  late Animation<Offset> _textSlide;
-  late Animation<double> _gearFade;
+  late Animation<double> _blFadeIn;
+  late Animation<double> _blScaleIn;
+  late Animation<double> _textFadeIn;
+  late Animation<Offset> _textSlideIn;
+  late Animation<double> _gearFadeIn;
+  late Animation<double> _gearTurns;
+  late Animation<double> _effectIntensity;
 
   @override
   void initState() {
     super.initState();
 
-    // 1. Setup Entrance Animations (Total duration 2 seconds)
+    // 1. ENTRANCE (0s - 2s)
     _entranceController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     );
 
-    // BL Logo: Pop in (Scale + Fade)
-    _blFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+    _blFadeIn = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _entranceController,
         curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
       ),
     );
-
-    // Bounce effect
-    _blScale = Tween<double>(begin: 0.5, end: 1.0).animate(
+    _blScaleIn = Tween<double>(begin: 0.5, end: 1.0).animate(
       CurvedAnimation(
         parent: _entranceController,
         curve: const Interval(0.0, 0.6, curve: Curves.easeOutBack),
       ),
     );
-
-    // Text: Slide up + Fade
-    _textFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+    _textFadeIn = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _entranceController,
         curve: const Interval(0.4, 1.0, curve: Curves.easeIn),
       ),
     );
-    _textSlide = Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero)
+    _textSlideIn = Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero)
         .animate(
           CurvedAnimation(
             parent: _entranceController,
             curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
           ),
         );
-
-    // Gear: Fade in at the end
-    _gearFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+    _gearFadeIn = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _entranceController,
         curve: const Interval(0.7, 1.0, curve: Curves.easeIn),
       ),
     );
 
-    // 2. Setup Gear Rotation (Infinite Spinner)
+    // 2. GEAR SPIN
     _gearController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 4), // 4 seconds per full rotation
-    )..repeat(); // Loop forever
+      duration: const Duration(seconds: 4),
+    );
 
-    // 3. Start Animation
+    _gearTurns = Tween<double>(begin: 0.0, end: 3.0).animate(
+      CurvedAnimation(parent: _gearController, curve: Curves.easeOutCubic),
+    );
+
+    // 3. COLOR TRANSFORMATION CONTROLLER
+    _effectController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+
+    _effectIntensity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _effectController, curve: Curves.easeInOut),
+    );
+
+    // --- SEQUENCE ---
     _entranceController.forward();
+    _gearController.forward();
 
-    // 4. Navigate after 4 seconds
-    Timer(const Duration(seconds: 4), _checkAuthAndNavigate);
+    // When Gear Stops -> Turn Background Blue & Logo White
+    _gearController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _effectController.forward();
+      }
+    });
+
+    // Navigate after effect completes
+    _effectController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _navigateToAuthGate();
+        });
+      }
+    });
   }
 
-  Future<void> _checkAuthAndNavigate() async {
-    final user = FirebaseAuth.instance.currentUser;
-    Widget nextScreen = (user != null)
-        ? const DashboardPage()
-        : const LoginPage();
-
+  void _navigateToAuthGate() {
     if (mounted) {
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (_, __, ___) => nextScreen,
+          pageBuilder: (_, __, ___) => const AuthGate(),
           transitionsBuilder: (_, animation, __, child) {
             return FadeTransition(opacity: animation, child: child);
           },
@@ -109,6 +137,7 @@ class _SplashScreenState extends State<SplashScreen>
   void dispose() {
     _entranceController.dispose();
     _gearController.dispose();
+    _effectController.dispose();
     super.dispose();
   }
 
@@ -116,63 +145,98 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // --- LOGO COMPOSITION (Stack) ---
-            SizedBox(
-              width: 250,
-              height: 250,
-              child: Stack(
-                alignment: Alignment.center,
+      body: Stack(
+        children: [
+          // LAYER 1: The Blue Gradient Background
+          AnimatedBuilder(
+            animation: _effectIntensity,
+            builder: (context, child) {
+              return Opacity(
+                opacity: _effectIntensity.value,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: gradientColors,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+
+          // LAYER 2: The Logo Elements (Transforming to White)
+          Center(
+            child: AnimatedBuilder(
+              animation: _effectIntensity,
+              builder: (context, child) {
+                // This Filter applies WHITE over everything based on intensity
+                return ColorFiltered(
+                  colorFilter: ColorFilter.mode(
+                    Colors.white.withOpacity(_effectIntensity.value),
+                    BlendMode
+                        .srcATop, // Keeps transparency, paints visible pixels white
+                  ),
+                  child: child,
+                );
+              },
+              // The Content to be whitened
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // 1. BL Logo (Base)
-                  ScaleTransition(
-                    scale: _blScale,
-                    child: FadeTransition(
-                      opacity: _blFade,
-                      child: Image.asset(
-                        'assets/images/logo_bl.png', // FIXED PATH
-                        width: 200,
-                      ),
+                  SizedBox(
+                    width: 250,
+                    height: 250,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      clipBehavior: Clip.none,
+                      children: [
+                        ScaleTransition(
+                          scale: _blScaleIn,
+                          child: FadeTransition(
+                            opacity: _blFadeIn,
+                            child: Image.asset(
+                              'assets/images/logo_bl.png',
+                              width: 200,
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: gearTopPosition,
+                          right: gearRightPosition,
+                          child: FadeTransition(
+                            opacity: _gearFadeIn,
+                            child: RotationTransition(
+                              turns: _gearTurns,
+                              child: Image.asset(
+                                'assets/images/logo_gear.png',
+                                width: gearSize,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
 
-                  // 2. Spinning Gear
-                  Positioned(
-                    right: 60, // Adjust this number if gear is not centered
-                    bottom: 60, // Adjust this number if gear is not centered
+                  const SizedBox(height: 20),
+
+                  SlideTransition(
+                    position: _textSlideIn,
                     child: FadeTransition(
-                      opacity: _gearFade,
-                      child: RotationTransition(
-                        turns: _gearController,
-                        child: Image.asset(
-                          'assets/images/logo_gear.png', // FIXED PATH
-                          width: 70,
-                        ),
+                      opacity: _textFadeIn,
+                      child: Image.asset(
+                        'assets/images/logo_text.png',
+                        width: 280,
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-
-            const SizedBox(height: 20),
-
-            // --- TEXT LOGO ---
-            SlideTransition(
-              position: _textSlide,
-              child: FadeTransition(
-                opacity: _textFade,
-                child: Image.asset(
-                  'assets/images/logo_text.png', // FIXED PATH
-                  width: 280,
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -1,18 +1,18 @@
+import 'package:buhay_link/features/splash/splash_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-// Hide AuthProvider to avoid conflict
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 
 import 'features/auth/presentation/providers/auth_provider.dart';
 import 'features/jobs/presentation/providers/job_provider.dart';
-import 'features/splash/splash_page.dart';
+
 import 'config/routes/app_routes.dart';
 
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/home/presentation/pages/dashboard_page.dart';
 
-class JobPullingApp extends StatelessWidget {
-  const JobPullingApp({super.key});
+class BuhayLinkApp extends StatelessWidget {
+  const BuhayLinkApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -27,39 +27,42 @@ class JobPullingApp extends StatelessWidget {
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7EFF)),
           useMaterial3: true,
+          scaffoldBackgroundColor: Colors.white,
         ),
-
-        home: StreamBuilder<User?>(
-          stream: FirebaseAuth.instance.authStateChanges(),
-          builder: (context, snapshot) {
-            // 1. Check for Errors
-            if (snapshot.hasError) {
-              print("❌ ERROR in Auth Stream: ${snapshot.error}");
-              return const Scaffold(
-                body: Center(child: Text("Error initializing Firebase")),
-              );
-            }
-
-            // 2. Loading State
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              print("⏳ DEBUG: Still waiting for Firebase...");
-              return const SplashScreen();
-            }
-
-            // 3. User Found
-            if (snapshot.hasData) {
-              print("✅ DEBUG: User is logged in! Going to Dashboard.");
-              return const DashboardPage();
-            }
-
-            // 4. No User
-            print("👤 DEBUG: No user found. Going to Login.");
-            return const LoginPage();
-          },
-        ),
-
+        // 1. Start with Splash Screen
+        home: const SplashScreen(),
         routes: AppRoutes.routes,
       ),
+    );
+  }
+}
+
+// 2. This widget handles the Login vs Dashboard logic
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const Scaffold(body: Center(child: Text("Auth Error")));
+        }
+
+        // While checking auth status, show a simple loader
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.hasData) {
+          return const DashboardPage();
+        }
+
+        return const LoginPage();
+      },
     );
   }
 }
