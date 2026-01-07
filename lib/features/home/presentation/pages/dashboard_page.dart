@@ -40,6 +40,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   final ScrollController _scrollController = ScrollController();
 
+  // "False" means FIND JOBS mode (Seeker). "True" means MY POSTS mode (Employer).
   bool _showMyPosts = false;
   String _selectedFilter = "All";
 
@@ -66,6 +67,7 @@ class _DashboardPageState extends State<DashboardPage> {
         .where('read', isEqualTo: false)
         .snapshots()
         .map((snapshot) {
+          // Count only job-related notifications
           return snapshot.docs.where((doc) {
             final type = doc.data()['type'] as String?;
             return type == 'job_post' || type == 'new_post';
@@ -81,6 +83,7 @@ class _DashboardPageState extends State<DashboardPage> {
           int count = 0;
           for (var doc in snapshot.docs) {
             final data = doc.data();
+            // Count unread messages NOT sent by me
             if (data['lastSenderId'] != uid && data['isRead'] == false) {
               count++;
             }
@@ -95,6 +98,7 @@ class _DashboardPageState extends State<DashboardPage> {
         .where('read', isEqualTo: false)
         .snapshots()
         .map((snapshot) {
+          // Exclude job posts from profile badge
           return snapshot.docs.where((doc) {
             final type = doc.data()['type'] as String?;
             return type != 'job_post' && type != 'new_post';
@@ -239,6 +243,7 @@ class _DashboardPageState extends State<DashboardPage> {
   void _onTabTapped(int index) {
     if (_selectedIndex == index) return;
 
+    // Mark home notifications as read if Home is clicked
     if (index == 0) {
       _markAsRead(['job_post', 'new_post']);
     }
@@ -285,6 +290,7 @@ class _DashboardPageState extends State<DashboardPage> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  // --- HOME WITH BADGE ---
                   StreamBuilder<int>(
                     stream: _homeBadgeStream,
                     builder: (context, snapshot) {
@@ -298,11 +304,15 @@ class _DashboardPageState extends State<DashboardPage> {
                     },
                   ),
                   _buildNavBarItem(1, Icons.search_rounded, "Search"),
+
+                  // --- MIDDLE BUTTON (CHANGES BASED ON MODE) ---
                   _buildMiddleNavBarItem(
                     2,
                     _showMyPosts ? Icons.add_rounded : Icons.assignment_rounded,
                     _showMyPosts ? "Post" : "Applied",
                   ),
+
+                  // --- CHAT WITH BADGE ---
                   StreamBuilder<int>(
                     stream: _chatBadgeStream,
                     builder: (context, snapshot) {
@@ -315,6 +325,8 @@ class _DashboardPageState extends State<DashboardPage> {
                       );
                     },
                   ),
+
+                  // --- PROFILE WITH BADGE ---
                   StreamBuilder<int>(
                     stream: _profileBadgeStream,
                     builder: (context, snapshot) {
@@ -514,6 +526,9 @@ class _DashboardPageState extends State<DashboardPage> {
       case 1:
         return SearchPage(isEmployerMode: _showMyPosts);
       case 2:
+        // --- THIS CONTROLS THE POST JOB VISIBILITY ---
+        // If _showMyPosts is TRUE, we show AddJobPage.
+        // If FALSE, we show AppliedJobsPage.
         return _showMyPosts
             ? const AddJobPage(showBackButton: false)
             : const AppliedJobsPage(showBackButton: false);
@@ -736,7 +751,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 }
 
-// --- FIXED _AnimatedHeader ---
+// --- ANIMATED HEADER WITH NAME FIX ---
 class _AnimatedHeader extends StatefulWidget {
   final DashboardRepository repository;
   final bool showMyPosts;
@@ -837,7 +852,7 @@ class _AnimatedHeaderState extends State<_AnimatedHeader> {
                     if (snapshot.hasData && snapshot.data!.exists) {
                       final data =
                           snapshot.data!.data() as Map<String, dynamic>?;
-                      // FIXED LOGIC: Check 'name' first!
+                      // Updated logic to check 'name' first
                       final String realName =
                           data?['name'] ??
                           data?['fullName'] ??

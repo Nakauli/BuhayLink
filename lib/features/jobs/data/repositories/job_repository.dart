@@ -4,118 +4,10 @@ import '../datasources/firebase_job_service.dart';
 import '../models/job_model.dart';
 
 class JobRepository {
-  // --- RATING SYSTEM ---
-
-  // 1. Add a Rating & Update Average (Updated with Duplicate Check)
-  Future<void> rateUser({
-    required String targetUserId,
-    required double rating,
-    required String review,
-    required String jobId,
-  }) async {
-    final currentUser = _auth.currentUser;
-    if (currentUser == null) return;
-
-    // --- CHECK FOR DUPLICATES FIRST ---
-    // This prevents the user from submitting twice even if the UI lags
-    bool alreadyRated = await hasUserRated(targetUserId, jobId);
-    if (alreadyRated) {
-      throw Exception("You have already rated this user for this job.");
-    }
-    // ---------------------------------
-
-    // 1. Get Rater's Info (Name/Photo)
-    String raterName = currentUser.displayName ?? "User";
-    String raterPhoto = currentUser.photoURL ?? "";
-
-    final raterDoc = await _firestore
-        .collection('users')
-        .doc(currentUser.uid)
-        .get();
-    if (raterDoc.exists) {
-      final data = raterDoc.data();
-      if (data != null) {
-        raterName = data['fullName'] ?? raterName;
-        raterPhoto = data['profileImage'] ?? raterPhoto;
-      }
-    }
-
-    WriteBatch batch = _firestore.batch();
-
-    // 2. Add Review
-    DocumentReference ratingRef = _firestore
-        .collection('users')
-        .doc(targetUserId)
-        .collection('ratings')
-        .doc();
-
-    batch.set(ratingRef, {
-      'raterId': currentUser.uid,
-      'raterName': raterName,
-      'raterPhoto': raterPhoto,
-      'rating': rating,
-      'review': review,
-      'jobId': jobId,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-
-    await batch.commit();
-
-    // 5. Calculate New Average
-    await _recalculateAverage(targetUserId);
-  }
-
-  // --- CHECK IF ALREADY RATED (Existing) ---
-  Future<bool> hasUserRated(String targetUserId, String jobId) async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return false;
-
-    try {
-      final query = await _firestore
-          .collection('users')
-          .doc(targetUserId)
-          .collection('ratings')
-          .where('jobId', isEqualTo: jobId)
-          .where('raterId', isEqualTo: uid)
-          .limit(1)
-          .get();
-
-      return query.docs.isNotEmpty;
-    } catch (e) {
-      print("Error checking rating status: $e");
-      return false;
-    }
-  }
-
-  // Helper: Recalculate Average
-  Future<void> _recalculateAverage(String userId) async {
-    final snapshots = await _firestore
-        .collection('users')
-        .doc(userId)
-        .collection('ratings')
-        .get();
-
-    if (snapshots.docs.isEmpty) return;
-
-    double total = 0;
-    for (var doc in snapshots.docs) {
-      total += (doc.data()['rating'] ?? 0.0) as double;
-    }
-
-    double newAverage = total / snapshots.docs.length;
-
-    await _firestore.collection('users').doc(userId).update({
-      'rating': newAverage,
-      'reviewCount': snapshots.docs.length,
-    });
-  }
-
-  // 1. Dependencies
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
   final FirebaseJobService _service;
 
-  // 2. Constructor
   JobRepository({
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
@@ -150,6 +42,9 @@ class JobRepository {
     return input[0].toUpperCase() + input.substring(1);
   }
 
+  // ---------------------------------------------------------
+  // [UPDATED] POST JOB (Now triggers Home Red Dot)
+  // ---------------------------------------------------------
   Future<void> postJob({
     required String title,
     required String description,
@@ -191,6 +86,7 @@ class JobRepository {
 
     String finalPosterName = _capitalize(rawName);
 
+    // 1. Create the Job
     DocumentReference jobRef = await _firestore.collection('jobs').add({
       'title': title,
       'description': description,
@@ -209,15 +105,16 @@ class JobRepository {
       'status': 'open',
     });
 
+    // 2. [IMPORTANT] Create Global Notification for Home Badge
     await _firestore.collection('notifications').add({
-      'recipientId': 'all',
+      'recipientId': 'all', // 'all' triggers the badge for everyone
       'title': 'New Job Opportunity',
       'message': "New job posted: $title",
-      'type': 'new_post',
+      'type': 'new_post', // Matches Dashboard logic
       'jobId': jobRef.id,
       'posterId': user.uid,
       'timestamp': FieldValue.serverTimestamp(),
-      'read': false,
+      'read': false, // Starts as unread (Red Dot ON)
     });
   }
 
@@ -408,6 +305,101 @@ class JobRepository {
     });
 
     await batch.commit();
+  }
+
+  // --- RATING SYSTEM ---
+  Future<void> rateUser({
+    required String targetUserId,
+    required double rating,
+    required String review,
+    required String jobId,
+  }) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    bool alreadyRated = await hasUserRated(targetUserId, jobId);
+    if (alreadyRated) {
+      throw Exception("You have already rated this user for this job.");
+    }
+
+    String raterName = currentUser.displayName ?? "User";
+    String raterPhoto = currentUser.photoURL ?? "";
+
+    final raterDoc = await _firestore
+        .collection('users')
+        .doc(currentUser.uid)
+        .get();
+    if (raterDoc.exists) {
+      final data = raterDoc.data();
+      if (data != null) {
+        raterName = data['fullName'] ?? raterName;
+        raterPhoto = data['profileImage'] ?? raterPhoto;
+      }
+    }
+
+    WriteBatch batch = _firestore.batch();
+
+    DocumentReference ratingRef = _firestore
+        .collection('users')
+        .doc(targetUserId)
+        .collection('ratings')
+        .doc();
+
+    batch.set(ratingRef, {
+      'raterId': currentUser.uid,
+      'raterName': raterName,
+      'raterPhoto': raterPhoto,
+      'rating': rating,
+      'review': review,
+      'jobId': jobId,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
+    await _recalculateAverage(targetUserId);
+  }
+
+  Future<bool> hasUserRated(String targetUserId, String jobId) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return false;
+
+    try {
+      final query = await _firestore
+          .collection('users')
+          .doc(targetUserId)
+          .collection('ratings')
+          .where('jobId', isEqualTo: jobId)
+          .where('raterId', isEqualTo: uid)
+          .limit(1)
+          .get();
+
+      return query.docs.isNotEmpty;
+    } catch (e) {
+      print("Error checking rating status: $e");
+      return false;
+    }
+  }
+
+  Future<void> _recalculateAverage(String userId) async {
+    final snapshots = await _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('ratings')
+        .get();
+
+    if (snapshots.docs.isEmpty) return;
+
+    double total = 0;
+    for (var doc in snapshots.docs) {
+      total += (doc.data()['rating'] ?? 0.0) as double;
+    }
+
+    double newAverage = total / snapshots.docs.length;
+
+    await _firestore.collection('users').doc(userId).update({
+      'rating': newAverage,
+      'reviewCount': snapshots.docs.length,
+    });
   }
 
   // --- HELPERS (Save, Sync, Withdraw) ---

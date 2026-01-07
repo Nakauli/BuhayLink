@@ -7,12 +7,10 @@ class ChatRepository {
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
 
-  // Dependency Injection
   ChatRepository({FirebaseFirestore? firestore, FirebaseAuth? auth})
     : _firestore = firestore ?? FirebaseFirestore.instance,
       _auth = auth ?? FirebaseAuth.instance;
 
-  // 1. GET MESSAGES (Real-time)
   Stream<QuerySnapshot> getMessagesStream(String chatRoomId) {
     return _firestore
         .collection('chats')
@@ -22,7 +20,7 @@ class ChatRepository {
         .snapshots();
   }
 
-  // 2. SEND MESSAGE
+  // 2. SEND MESSAGE (UPDATED FOR RED DOT)
   Future<void> sendMessage(
     String chatRoomId,
     String receiverId,
@@ -45,32 +43,39 @@ class ChatRepository {
         .collection('messages')
         .add(messageData);
 
-    // Update summary for the list view
+    // [CRITICAL UPDATE] Update Main Chat Doc for Dashboard Notification
+    // 'participants' must arrayContains me for the query to work
+    // 'lastSenderId' tells the receiver "this wasn't you"
+    // 'isRead': false triggers the red dot
     await _firestore.collection('chats').doc(chatRoomId).set({
       'lastMessage': text.trim(),
-      'lastTimestamp': FieldValue.serverTimestamp(),
-      'users': [senderId, receiverId], // Critical for the query!
+      'lastMessageTime':
+          FieldValue.serverTimestamp(), // Fixed field name for sorting
+      'participants': [
+        senderId,
+        receiverId,
+      ], // Renamed 'users' to 'participants' to match Dashboard query
+      'lastSenderId': senderId, // Crucial for "unread" logic
+      'isRead': false, // Crucial for red dot
     }, SetOptions(merge: true));
   }
 
-  // 3. GET ALL CHAT ROOMS (For Messages Page)
   Stream<QuerySnapshot> getAllChatRoomsStream() {
     final String uid = _auth.currentUser?.uid ?? "";
     if (uid.isEmpty) return const Stream.empty();
 
+    // Updated to match the 'sendMessage' field 'participants'
     return _firestore
         .collection('chats')
-        .where('users', arrayContains: uid)
-        .orderBy('lastTimestamp', descending: true)
+        .where('participants', arrayContains: uid)
+        .orderBy('lastMessageTime', descending: true)
         .snapshots();
   }
 
-  // 4. GET USER STATUS (For the Green Circle)
   Stream<DocumentSnapshot> getUserStatusStream(String userId) {
     return _firestore.collection('users').doc(userId).snapshots();
   }
 
-  // 5. START CHAT (Navigates & Ensures Doc Exists)
   Future<void> startChat(
     BuildContext context,
     String receiverId,
@@ -81,17 +86,18 @@ class ChatRepository {
     if (currentUser == null) return;
 
     List<String> ids = [currentUser.uid, receiverId];
-    ids.sort(); // Ensure consistent ID generation
+    ids.sort();
     String chatRoomId = ids.join("_");
 
-    // Check if chat exists, if not create it immediately so it appears in lists
     final chatDoc = await _firestore.collection('chats').doc(chatRoomId).get();
     if (!chatDoc.exists) {
       await _firestore.collection('chats').doc(chatRoomId).set({
-        'users': ids,
-        'lastTimestamp': FieldValue.serverTimestamp(),
+        'participants': ids, // Consistent field name
+        'lastMessageTime': FieldValue.serverTimestamp(),
         'lastMessage': 'Started a conversation',
         'createdBy': currentUser.uid,
+        'isRead': true, // Start as read
+        'lastSenderId': currentUser.uid,
       });
     }
 
@@ -108,7 +114,6 @@ class ChatRepository {
     }
   }
 
-  // SOLID: SRP - Handles fetching user profile data for the UI
   Stream<DocumentSnapshot> getUserProfileStream(String userId) {
     return _firestore.collection('users').doc(userId).snapshots();
   }
