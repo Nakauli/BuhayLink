@@ -17,6 +17,16 @@ class _MessagesPageState extends State<MessagesPage> {
   final ChatRepository _chatRepository = ChatRepository();
   final String _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? "";
 
+  // Search State
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = "";
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -24,14 +34,14 @@ class _MessagesPageState extends State<MessagesPage> {
       // Removed standard AppBar to use custom Gradient Header
       body: Column(
         children: [
-          // --- 1. EPIC GRADIENT HEADER ---
+          // --- 1. EPIC GRADIENT HEADER WITH SEARCH ---
           Container(
             width: double.infinity,
             padding: const EdgeInsets.only(
               top: 60,
               left: 24,
               right: 24,
-              bottom: 30,
+              bottom: 24, // Reduced bottom padding slightly
             ),
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -44,10 +54,10 @@ class _MessagesPageState extends State<MessagesPage> {
                 bottomRight: Radius.circular(30),
               ),
             ),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   "Messages",
                   style: TextStyle(
                     fontSize: 28,
@@ -55,13 +65,49 @@ class _MessagesPageState extends State<MessagesPage> {
                     color: Colors.white,
                   ),
                 ),
-                SizedBox(height: 4),
-                Text(
+                const SizedBox(height: 4),
+                const Text(
                   "Your active conversations",
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.white70,
                     fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // --- SEARCH BAR ---
+                TextField(
+                  controller: _searchController,
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value.toLowerCase();
+                    });
+                  },
+                  style: const TextStyle(color: Colors.black87),
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: Colors.white,
+                    hintText: "Search name...",
+                    hintStyle: TextStyle(color: Colors.grey[400]),
+                    prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: 12,
+                      horizontal: 16,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, color: Colors.grey),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = "");
+                            },
+                          )
+                        : null,
                   ),
                 ),
               ],
@@ -175,14 +221,35 @@ class _MessagesPageState extends State<MessagesPage> {
           isVerified = userData['isVerified'] == true;
         }
 
+        // --- SEARCH FILTER LOGIC ---
+        // If there is a search query AND the name doesn't match, hide this item.
+        if (_searchQuery.isNotEmpty &&
+            !name.toLowerCase().contains(_searchQuery)) {
+          return const SizedBox.shrink();
+        }
+
         final String lastMessage = chatData['lastMessage'] ?? "No messages yet";
-        final Timestamp? lastTimestamp = chatData['lastTimestamp'];
+        final Timestamp? lastTimestamp =
+            chatData['lastTimestamp']; // Use correct field
         final String timeString = _formatTimestamp(lastTimestamp);
+
+        // NEW: Check for unread status
+        // If I am NOT the last sender AND isRead is false -> SHOW RED DOT
+        bool isUnread = false;
+        if (chatData['lastSenderId'] != _currentUserId &&
+            chatData['isRead'] == false) {
+          isUnread = true;
+        }
 
         return Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isUnread
+                ? Colors.blue.withOpacity(0.05)
+                : Colors.white, // Highlight unread
             borderRadius: BorderRadius.circular(16),
+            border: isUnread
+                ? Border.all(color: const Color(0xFF2E7EFF).withOpacity(0.3))
+                : null,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.03),
@@ -260,8 +327,10 @@ class _MessagesPageState extends State<MessagesPage> {
                               Expanded(
                                 child: Text(
                                   name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
+                                  style: TextStyle(
+                                    fontWeight: isUnread
+                                        ? FontWeight.w900
+                                        : FontWeight.bold, // Bolder if unread
                                     fontSize: 16,
                                     color: Colors.black87,
                                   ),
@@ -272,7 +341,9 @@ class _MessagesPageState extends State<MessagesPage> {
                               Text(
                                 timeString,
                                 style: TextStyle(
-                                  color: Colors.grey[400],
+                                  color: isUnread
+                                      ? const Color(0xFF2E7EFF)
+                                      : Colors.grey[400],
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -280,15 +351,37 @@ class _MessagesPageState extends State<MessagesPage> {
                             ],
                           ),
                           const SizedBox(height: 6),
-                          Text(
-                            lastMessage,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 14,
-                              height: 1.2,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  lastMessage,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: isUnread
+                                        ? Colors.black87
+                                        : Colors.grey[600],
+                                    fontSize: 14,
+                                    fontWeight: isUnread
+                                        ? FontWeight.w600
+                                        : FontWeight
+                                              .normal, // Bold msg if unread
+                                    height: 1.2,
+                                  ),
+                                ),
+                              ),
+                              if (isUnread)
+                                Container(
+                                  margin: const EdgeInsets.only(left: 8),
+                                  width: 10,
+                                  height: 10,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF2E7EFF),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                            ],
                           ),
                         ],
                       ),
