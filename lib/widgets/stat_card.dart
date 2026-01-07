@@ -16,41 +16,53 @@ class StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Calculate width dynamically based on screen size
-    double boxWidth = (MediaQuery.of(context).size.width - 64) / 4; 
-
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: boxWidth,
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        // Fixed width ensures 3 cards fit perfectly in the Profile Page row
+        width: 100,
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.2)),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: Border.all(color: Colors.grey.shade100),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white, size: 20),
-            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2E7EFF).withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: const Color(0xFF2E7EFF), size: 24),
+            ),
+            const SizedBox(height: 12),
             Text(
               value,
               style: const TextStyle(
-                fontSize: 16, 
-                fontWeight: FontWeight.bold, 
-                color: Colors.white
-              )
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87, // Dark text for visibility
+              ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             Text(
               label,
-              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 9, 
-                color: Colors.white.withOpacity(0.7), 
-                height: 1.1
-              )
+                fontSize: 12,
+                color: Colors.grey[600], // Grey label
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
