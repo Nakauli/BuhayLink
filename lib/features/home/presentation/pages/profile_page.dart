@@ -86,8 +86,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
   // --- IMAGE UPLOAD LOGIC ---
   Future<void> _pickAndUploadImage() async {
-    print("Camera button clicked!"); // Debug print
-
     showModalBottomSheet(
       context: context,
       builder: (modalContext) => SafeArea(
@@ -216,7 +214,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
               ],
-            ),  
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -246,6 +244,7 @@ class _ProfilePageState extends State<ProfilePage> {
         content: TextField(
           controller: ctrl,
           maxLines: title == "About Me" ? 4 : 1,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
         ),
         actions: [
           TextButton(
@@ -386,9 +385,8 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Column(
               children: [
                 // 1. HEADER (FIXED CLICKABILITY)
-                // We use a SizedBox large enough to hold everything without overflow
                 SizedBox(
-                  height: 260, // Increased height to ensure button is inside
+                  height: 260,
                   child: Stack(
                     alignment: Alignment.topCenter,
                     children: [
@@ -411,13 +409,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
                       // Profile Picture & Camera Button
                       Positioned(
-                        top: 120, // Positioned to overlap the gradient line
+                        top: 120,
                         child: SizedBox(
                           width: 120,
                           height: 120,
                           child: Stack(
                             children: [
-                              // The Image
                               Container(
                                 width: 120,
                                 height: 120,
@@ -451,19 +448,15 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               ),
 
-                              // The Camera Button (Using InkWell for clearer touch feedback)
                               Positioned(
                                 bottom: 0,
                                 right: 0,
                                 child: Material(
-                                  color: const Color(
-                                    0xFF2E7EFF,
-                                  ), // Button color
+                                  color: const Color(0xFF2E7EFF),
                                   shape: const CircleBorder(),
                                   elevation: 4,
                                   child: InkWell(
-                                    onTap:
-                                        _pickAndUploadImage, // This calls your function
+                                    onTap: _pickAndUploadImage,
                                     customBorder: const CircleBorder(),
                                     child: Container(
                                       padding: const EdgeInsets.all(10),
@@ -484,15 +477,42 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
 
-                // 2. NAME & BADGE
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
+                // 2. NAME & EDIT BUTTON (UPDATED)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // EDIT NAME BUTTON
+                    GestureDetector(
+                      onTap: () => _showEditDialog(
+                        "Name",
+                        name,
+                        (val) => _repository.updateProfile(name: val),
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.edit,
+                          size: 16,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+
                 if (isVerified) ...[
                   const SizedBox(height: 4),
                   Container(
