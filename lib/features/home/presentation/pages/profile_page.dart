@@ -265,44 +265,50 @@ class _ProfilePageState extends State<ProfilePage> {
   void _showSkillsDialog(List<dynamic> current) {
     List<String> temp = List.from(current);
     final ctrl = TextEditingController();
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
           title: const Text("Skills"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: ctrl,
-                decoration: InputDecoration(
-                  hintText: "Add skill",
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: () {
-                      if (ctrl.text.isNotEmpty) {
-                        setState(() {
-                          temp.add(ctrl.text);
-                          ctrl.clear();
-                        });
-                      }
-                    },
+          // --- FIX: Wrap in SingleChildScrollView to prevent overflow ---
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: ctrl,
+                  decoration: InputDecoration(
+                    hintText: "Add skill",
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.add),
+                      onPressed: () {
+                        if (ctrl.text.isNotEmpty) {
+                          setState(() {
+                            temp.add(ctrl.text);
+                            ctrl.clear();
+                          });
+                        }
+                      },
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                children: temp
-                    .map(
-                      (s) => Chip(
-                        label: Text(s),
-                        onDeleted: () => setState(() => temp.remove(s)),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ],
+                const SizedBox(height: 10),
+                // Limit the height if the list gets huge, though scroll view handles it generally
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: temp
+                      .map(
+                        (s) => Chip(
+                          label: Text(s),
+                          onDeleted: () => setState(() => temp.remove(s)),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(

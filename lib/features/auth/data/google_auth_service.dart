@@ -1,6 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // <--- NEW IMPORT
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class GoogleAuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -11,6 +11,12 @@ class GoogleAuthService {
   // Sign In Function
   Future<UserCredential?> signInWithGoogle() async {
     try {
+      // --- THE FIX IS HERE ---
+      // Force the account picker to appear by signing out of the plugin first.
+      // This clears the cached "last logged in" account.
+      await _googleSignIn.signOut();
+      // -----------------------
+
       // 1. Trigger the Google Authentication flow (Opens the popup)
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
@@ -33,9 +39,8 @@ class GoogleAuthService {
       );
 
       // ---------------------------------------------------------
-      // 5. NEW STEP: Check & Create Firestore Profile
+      // 5. Check & Create Firestore Profile (Kept as requested)
       // ---------------------------------------------------------
-      // If login was successful, make sure they have a database entry
       if (userCredential.user != null) {
         await _ensureFirestoreProfileExists(userCredential.user!);
       }
@@ -47,9 +52,7 @@ class GoogleAuthService {
     }
   }
 
-  // --- NEW HELPER METHOD ---
-  // Checks if the user exists in the 'users' collection.
-  // If not, it creates a default profile using their Google info.
+  // --- HELPER METHOD (Kept existing) ---
   Future<void> _ensureFirestoreProfileExists(User user) async {
     try {
       final userDocRef = _firestore.collection('users').doc(user.uid);
@@ -62,7 +65,7 @@ class GoogleAuthService {
         String email = user.email ?? "";
         String photo = user.photoURL ?? "";
 
-        // Create the document (Matches your AuthRepository structure)
+        // Create the document
         await userDocRef.set({
           'uid': user.uid,
           'email': email,
@@ -74,7 +77,7 @@ class GoogleAuthService {
           'location': "Philippines",
           'createdAt': FieldValue.serverTimestamp(),
 
-          // IMPORTANT: Initialize counters so the app doesn't crash on math
+          // Initialize counters
           'savedCount': 0,
           'appliedCount': 0,
           'hiredCompleted': 0,
@@ -85,8 +88,6 @@ class GoogleAuthService {
       }
     } catch (e) {
       print("Error ensuring Firestore profile: $e");
-      // We don't throw here to avoid blocking the login,
-      // but the app might behave oddly if this fails.
     }
   }
 
