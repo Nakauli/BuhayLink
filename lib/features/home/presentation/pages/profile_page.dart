@@ -10,7 +10,6 @@ import '../../data/repositories/profile_repository.dart';
 import 'create_resume_page.dart';
 
 // --- IMPORTS ---
-
 import 'applied_jobs_page.dart';
 import 'hired_jobs_page.dart';
 import 'saved_jobs_page.dart';
@@ -332,23 +331,7 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16, top: 10),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.3),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.logout, color: Colors.white, size: 20),
-              onPressed: _handleLogout,
-            ),
-          ),
-        ],
-      ),
+      // Removed standard AppBar to customize header fully
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('users')
@@ -384,15 +367,15 @@ class _ProfilePageState extends State<ProfilePage> {
             padding: EdgeInsets.zero,
             child: Column(
               children: [
-                // 1. HEADER (FIXED CLICKABILITY)
+                // 1. UPDATED EPIC HEADER
                 SizedBox(
-                  height: 260,
+                  height: 280, // Increased height for the title
                   child: Stack(
                     alignment: Alignment.topCenter,
                     children: [
                       // Gradient Background
                       Container(
-                        height: 180,
+                        height: 200, // Taller gradient area
                         width: double.infinity,
                         decoration: const BoxDecoration(
                           gradient: LinearGradient(
@@ -405,11 +388,44 @@ class _ProfilePageState extends State<ProfilePage> {
                             bottomRight: Radius.circular(32),
                           ),
                         ),
+                        // HEADER CONTENT (Title + Logout) inside Safe Area
+                        child: SafeArea(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 16,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  "My Profile",
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                // Logout Button (Clean, no background)
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.logout,
+                                    color: Colors.white,
+                                  ),
+                                  onPressed: _handleLogout,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
 
                       // Profile Picture & Camera Button
                       Positioned(
-                        top: 120,
+                        top: 140, // Adjusted position to overlap nicely
                         child: SizedBox(
                           width: 120,
                           height: 120,
@@ -477,7 +493,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
 
-                // 2. NAME & EDIT BUTTON (UPDATED)
+                // 2. NAME & EDIT BUTTON
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
