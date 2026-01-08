@@ -29,30 +29,23 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
+      // --- HEADER UPDATED TO MATCH HIRED JOBS FORMAT ---
       appBar: AppBar(
+        title: const Text(
+          "My Applications",
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
-        centerTitle: true,
         automaticallyImplyLeading: widget.showBackButton,
         leading: widget.showBackButton
             ? IconButton(
-                icon: const Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: Colors.black,
-                  size: 20,
-                ),
+                icon: const Icon(Icons.arrow_back, color: Colors.black),
                 onPressed: () => Navigator.pop(context),
               )
             : null,
-        title: const Text(
-          "My Applications",
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-          ),
-        ),
       ),
+      // -------------------------------------------------
       body: uid == null
           ? const Center(child: Text("Please login."))
           : StreamBuilder<QuerySnapshot>(
