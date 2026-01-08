@@ -11,7 +11,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// --- PACKAGES FOR IMAGE DOWNLOADING (Kept these for the Gallery feature) ---
+// --- PACKAGES FOR DOWNLOADING ---
 import 'package:gal/gal.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -31,7 +31,8 @@ class ChatDetailPage extends StatefulWidget {
   State<ChatDetailPage> createState() => _ChatDetailPageState();
 }
 
-class _ChatDetailPageState extends State<ChatDetailPage> {
+class _ChatDetailPageState extends State<ChatDetailPage>
+    with WidgetsBindingObserver {
   final ChatRepository _chatRepository = ChatRepository();
   final TextEditingController _messageController = TextEditingController();
   final String _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? "";
@@ -47,10 +48,133 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     return ids.join("_");
   }
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _markMessagesAsSeen();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // --- SEEN STATUS LOGIC ---
+  void _markMessagesAsSeen() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('chats')
+        .doc(_chatRoomId)
+        .collection('messages')
+        .where('senderId', isEqualTo: widget.receiverId)
+        .where('isSeen', isEqualTo: false)
+        .get();
+
+    final batch = FirebaseFirestore.instance.batch();
+    for (var doc in snapshot.docs) {
+      batch.update(doc.reference, {'isSeen': true});
+    }
+    await batch.commit();
+  }
+
+  // --- MESSAGE OPTIONS (DELETE & DOWNLOAD) ---
+  void _showMessageOptions(
+    String messageId,
+    bool isMe,
+    String type,
+    String content,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "Message Options",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+
+            // --- 1. DOWNLOAD OPTION (For Images/Files) ---
+            if (type == 'image' || type == 'file')
+              ListTile(
+                leading: const Icon(Icons.download_rounded, color: Colors.blue),
+                title: const Text("Save to Device"),
+                onTap: () {
+                  Navigator.pop(context);
+                  if (type == 'image') {
+                    _handleAttachmentClick(content, 'image');
+                  } else {
+                    List<String> parts = content.split('|');
+                    _handleAttachmentClick(parts[0], 'file');
+                  }
+                },
+              ),
+
+            // --- 2. DELETE FOR ME ---
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.black87),
+              title: const Text("Remove for you"),
+              onTap: () {
+                Navigator.pop(context);
+                _deleteMessage(messageId, forEveryone: false);
+              },
+            ),
+
+            // --- 3. UNSEND (Only if isMe) ---
+            if (isMe)
+              ListTile(
+                leading: const Icon(Icons.delete_forever, color: Colors.red),
+                title: const Text(
+                  "Unsend for everyone",
+                  style: TextStyle(color: Colors.red),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deleteMessage(messageId, forEveryone: true);
+                },
+              ),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteMessage(
+    String messageId, {
+    required bool forEveryone,
+  }) async {
+    final docRef = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(_chatRoomId)
+        .collection('messages')
+        .doc(messageId);
+
+    if (forEveryone) {
+      await docRef.delete();
+    } else {
+      await docRef.update({
+        'deletedFor': FieldValue.arrayUnion([_currentUserId]),
+      });
+    }
+  }
+
   // --- 1. HYBRID DOWNLOAD HANDLER ---
   Future<void> _handleAttachmentClick(String url, String type) async {
     try {
-      // A. LOCATION: Open Map (Standard Browser)
       if (type == 'location') {
         final Uri uri = Uri.parse(url);
         if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -59,32 +183,19 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         return;
       }
 
-      // B. IMAGE: Save to Gallery (KEPT EXACTLY AS YOU REQUESTED)
       if (type == 'image') {
-        setState(() => _isUploading = true); // Show loading
-
-        if (Platform.isAndroid) {
-          // Check storage permission for saving to gallery
-          await Permission.storage.request();
-        }
+        setState(() => _isUploading = true);
+        if (Platform.isAndroid) await Permission.storage.request();
 
         final tempDir = await getTemporaryDirectory();
         final path =
             '${tempDir.path}/img_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-        // Download image to temp folder first
         await Dio().download(
           url,
           path,
-          options: Options(
-            headers: {
-              'user-agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            },
-          ),
+          options: Options(headers: {'user-agent': 'Mozilla/5.0...'}),
         );
-
-        // Save from temp folder to Gallery
         await Gal.putImage(path, album: "BuhayLink");
 
         if (mounted) {
@@ -95,37 +206,29 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
             ),
           );
         }
-        setState(() => _isUploading = false); // Stop loading
-      }
-      // C. FILE: Open in Chrome/Safari (BROWSER METHOD)
-      else if (type == 'file') {
-        final Uri uri = Uri.parse(url);
-
-        if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-          throw 'Could not launch browser for file';
-        }
+        setState(() => _isUploading = false);
+      } else if (type == 'file') {
+        await _downloadFile(url);
       }
     } catch (e) {
       debugPrint("Action Error: $e");
       if (mounted) {
-        // Fallback specifically for images failing
         if (type == 'image') {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Gallery save failed: $e. Opening in browser..."),
+            const SnackBar(
+              content: Text("Gallery save failed. Opening browser..."),
               backgroundColor: Colors.orange,
             ),
           );
-          // Fallback to browser if gallery fails
-          final Uri uri = Uri.parse(url);
-          launchUrl(uri, mode: LaunchMode.externalApplication);
+          launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text("Could not open: $e"),
-              backgroundColor: Colors.red,
+              content: Text("Download failed: $e. Opening browser..."),
+              backgroundColor: Colors.orange,
             ),
           );
+          launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
         }
       }
     } finally {
@@ -133,10 +236,56 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     }
   }
 
+  // --- FILE DOWNLOADER HELPER ---
+  Future<void> _downloadFile(String url) async {
+    try {
+      if (Platform.isAndroid) await Permission.storage.request();
+
+      Directory? dir;
+      if (Platform.isAndroid) {
+        dir = Directory('/storage/emulated/0/Download');
+      } else {
+        dir = await getApplicationDocumentsDirectory();
+      }
+
+      if (!dir.existsSync()) dir = await getExternalStorageDirectory();
+
+      String ext = ".pdf";
+      if (url.contains(".")) {
+        String possibleExt = url.split('.').last;
+        if (possibleExt.contains('?')) {
+          possibleExt = possibleExt.split('?').first;
+        }
+        if (possibleExt.length < 5) ext = ".$possibleExt";
+      }
+
+      String fileName =
+          "BuhayLink_File_${DateTime.now().millisecondsSinceEpoch}$ext";
+      String savePath = "${dir?.path ?? ''}/$fileName";
+
+      await Dio().download(
+        url,
+        savePath,
+        options: Options(headers: {'user-agent': 'Mozilla/5.0...'}),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Saved to Downloads: $fileName"),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      throw "Download failed: $e";
+    }
+  }
+
   // --- SENDING LOGIC ---
   void _sendMessage({String? type, String? content}) {
     final text = _messageController.text.trim();
-
     if (type == null && text.isNotEmpty) {
       _chatRepository.sendMessage(
         _chatRoomId,
@@ -173,41 +322,35 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       setState(() => _isUploading = true);
       String cloudName = "drhbxeggn";
       String uploadPreset = "buhaylink_preset";
-
       final url = Uri.parse(
         'https://api.cloudinary.com/v1_1/$cloudName/auto/upload',
       );
-
       final request = http.MultipartRequest('POST', url)
         ..fields['upload_preset'] = uploadPreset
         ..files.add(await http.MultipartFile.fromPath('file', file.path));
-
       final response = await request.send();
-
       if (response.statusCode == 200) {
         final responseData = await response.stream.toBytes();
-        final responseString = String.fromCharCodes(responseData);
-        final jsonMap = jsonDecode(responseString);
+        final jsonMap = jsonDecode(String.fromCharCodes(responseData));
         return jsonMap['secure_url'];
       } else {
         throw Exception("Status: ${response.statusCode}");
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Upload failed: $e"),
             backgroundColor: Colors.red,
           ),
         );
-      }
       return null;
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
   }
 
-  // --- PICKERS ---
+  // --- PICKERS & LOCATION ---
   void _pickImage(ImageSource source) async {
     final picker = ImagePicker();
     final XFile? image = await picker.pickImage(
@@ -348,89 +491,57 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     );
   }
 
-  // --- MESSAGE CONTENT BUILDER ---
+  // --- CONTENT BUILDER (No Download Button) ---
   Widget _buildContent(String type, String content, bool isMe) {
     Color textColor = isMe ? Colors.white : Colors.black87;
-
     switch (type) {
       case 'image':
-        return Stack(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                content,
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.network(
+            content,
+            width: 200,
+            fit: BoxFit.cover,
+            loadingBuilder: (ctx, child, progress) {
+              if (progress == null) return child;
+              return Container(
                 width: 200,
-                fit: BoxFit.cover,
-                loadingBuilder: (ctx, child, progress) {
-                  if (progress == null) return child;
-                  return Container(
-                    width: 200,
-                    height: 150,
-                    color: Colors.grey[300],
-                    child: const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) =>
-                    const Icon(Icons.broken_image, color: Colors.grey),
-              ),
-            ),
-            Positioned(
-              bottom: 8,
-              right: 8,
-              child: InkWell(
-                onTap: () => _handleAttachmentClick(content, 'image'),
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.download,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                ),
-              ),
-            ),
-          ],
+                height: 150,
+                color: Colors.grey[300],
+                child: const Center(child: CircularProgressIndicator()),
+              );
+            },
+          ),
         );
 
       case 'location':
         return GestureDetector(
           onTap: () => _handleAttachmentClick(content, 'location'),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.location_on,
-                  color: isMe ? Colors.white : Colors.red,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.location_on, color: isMe ? Colors.white : Colors.red),
+              const SizedBox(width: 8),
+              Text(
+                "View Location",
+                style: TextStyle(
+                  color: textColor,
+                  decoration: TextDecoration.underline,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  "View Location",
-                  style: TextStyle(
-                    color: textColor,
-                    decoration: TextDecoration.underline,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
 
       case 'file':
         List<String> parts = content.split('|');
-        String url = parts[0];
-        String name = parts.length > 1 ? parts[1] : "Attachment";
         return GestureDetector(
-          onTap: () => _handleAttachmentClick(url, 'file'),
+          onTap: () async {
+            // Just open in browser when single tapped
+            final Uri uri = Uri.parse(parts[0]);
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          },
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -441,7 +552,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
-                  name,
+                  parts.length > 1 ? parts[1] : "Attachment",
                   style: TextStyle(
                     color: textColor,
                     decoration: TextDecoration.underline,
@@ -450,18 +561,11 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.open_in_browser,
-                color: textColor.withOpacity(0.7),
-                size: 20,
-              ),
             ],
           ),
         );
 
       default:
-        // Ensure content is not null when displayed
         return Text(
           content.isEmpty ? "..." : content,
           style: TextStyle(color: textColor, fontSize: 15, height: 1.3),
@@ -469,7 +573,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     }
   }
 
-  // --- BUBBLE WRAPPER ---
+  // --- ONE SINGLE BUILD MESSAGE BUBBLE FUNCTION ---
   Widget _buildMessageBubble(
     String msgId,
     String content,
@@ -477,11 +581,15 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     bool isMe,
     bool showAvatar,
     String time,
+    bool isSeen,
+    bool isLatest,
+    String receiverPhotoUrl,
+    String statusText,
   ) {
     bool isTapped = _tappedMessageId == msgId;
-
     return GestureDetector(
       onTap: () => setState(() => _tappedMessageId = isTapped ? null : msgId),
+      onLongPress: () => _showMessageOptions(msgId, isMe, type, content),
       child: Column(
         crossAxisAlignment: isMe
             ? CrossAxisAlignment.end
@@ -495,25 +603,27 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                   : MainAxisAlignment.start,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                if (!isMe) ...[
-                  if (showAvatar)
-                    CircleAvatar(
-                      radius: 14,
-                      backgroundColor: Colors.grey[300],
-                      child: Text(
-                        widget.receiverName.isNotEmpty
-                            ? widget.receiverName[0].toUpperCase()
-                            : "?",
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: Colors.black54,
-                        ),
-                      ),
-                    )
-                  else
-                    const SizedBox(width: 28),
-                  const SizedBox(width: 8),
-                ],
+                if (!isMe && showAvatar)
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Colors.grey[300],
+                    backgroundImage: receiverPhotoUrl.isNotEmpty
+                        ? NetworkImage(receiverPhotoUrl)
+                        : null,
+                    child: receiverPhotoUrl.isEmpty
+                        ? Text(
+                            widget.receiverName.isNotEmpty
+                                ? widget.receiverName[0].toUpperCase()
+                                : "?",
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.black54,
+                            ),
+                          )
+                        : null,
+                  ),
+                if (!isMe && !showAvatar) const SizedBox(width: 28),
+                if (!isMe) const SizedBox(width: 8),
                 Flexible(
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
@@ -550,20 +660,45 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
               ],
             ),
           ),
-          if (isTapped)
+          if (isTapped || (isMe && isLatest))
             Padding(
               padding: EdgeInsets.only(
                 left: isMe ? 0 : 44,
                 right: isMe ? 0 : 0,
                 bottom: 8,
               ),
-              child: Text(
-                time,
-                style: TextStyle(
-                  color: Colors.grey[500],
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: isMe
+                    ? MainAxisAlignment.end
+                    : MainAxisAlignment.start,
+                children: [
+                  Text(
+                    time,
+                    style: TextStyle(
+                      color: Colors.grey[500],
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  if (isMe) ...[
+                    const SizedBox(width: 4),
+                    Text(
+                      isSeen ? "Seen" : statusText,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: isSeen ? Colors.black54 : Colors.grey[400],
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    Icon(
+                      isSeen ? Icons.check_circle : Icons.check_circle_outline,
+                      size: 12,
+                      color: isSeen ? Colors.black54 : Colors.grey[400],
+                    ),
+                  ],
+                ],
               ),
             ),
         ],
@@ -571,7 +706,207 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     );
   }
 
-  // --- INPUT BAR ---
+  // --- MAIN BUILD METHOD ---
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.receiverId)
+          .snapshots(),
+      builder: (context, userSnapshot) {
+        String name = widget.receiverName;
+        String photoUrl = "";
+        bool isOnline = false;
+        String lastSeenText = "Offline";
+
+        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+          final data = userSnapshot.data!.data() as Map<String, dynamic>;
+          name = data['name'] ?? data['fullName'] ?? name;
+          photoUrl = data['photoUrl'] ?? "";
+          isOnline = data['isOnline'] ?? false;
+
+          if (isOnline) {
+            lastSeenText = "Active now";
+          } else if (data['lastActive'] != null) {
+            Timestamp ts = data['lastActive'];
+            DateTime dt = ts.toDate();
+            Duration diff = DateTime.now().difference(dt);
+            if (diff.inMinutes < 60)
+              lastSeenText = "Active ${diff.inMinutes}m ago";
+            else if (diff.inHours < 24)
+              lastSeenText = "Active ${diff.inHours}h ago";
+            else
+              lastSeenText = "Last seen ${DateFormat('MMM d').format(dt)}";
+          }
+        }
+
+        String deliveryStatus = isOnline ? "Delivered" : "Sent";
+
+        return Scaffold(
+          backgroundColor: const Color(0xFFF5F7FB),
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 1,
+            leading: const BackButton(color: Colors.black),
+            titleSpacing: 0,
+            title: Row(
+              children: [
+                Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: Colors.blue.shade100,
+                      backgroundImage: photoUrl.isNotEmpty
+                          ? NetworkImage(photoUrl)
+                          : null,
+                      child: photoUrl.isEmpty
+                          ? Text(
+                              name.isNotEmpty ? name[0].toUpperCase() : "?",
+                              style: TextStyle(
+                                color: Colors.blue.shade800,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            )
+                          : null,
+                    ),
+                    if (isOnline)
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        lastSeenText,
+                        style: TextStyle(
+                          color: isOnline ? Colors.green : Colors.grey,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            // --- REMOVED ACTIONS ICONS HERE AS REQUESTED ---
+          ),
+          body: Column(
+            children: [
+              if (_isUploading)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  color: Colors.white,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      SizedBox(
+                        width: 15,
+                        height: 15,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        "Processing...",
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _chatRepository.getMessagesStream(_chatRoomId),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData)
+                      return const Center(child: CircularProgressIndicator());
+                    final messages = snapshot.data!.docs;
+
+                    return ListView.builder(
+                      controller: _scrollController,
+                      reverse: true,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 20,
+                      ),
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) {
+                        final doc = messages[index];
+                        final data = doc.data() as Map<String, dynamic>;
+
+                        List<dynamic> deletedFor = data['deletedFor'] ?? [];
+                        if (deletedFor.contains(_currentUserId))
+                          return const SizedBox.shrink();
+
+                        bool isMe = data['senderId'] == _currentUserId;
+                        bool showAvatar = !isMe;
+                        if (index > 0) {
+                          final prevData =
+                              messages[index - 1].data()
+                                  as Map<String, dynamic>;
+                          if (prevData['senderId'] == data['senderId'])
+                            showAvatar = false;
+                        }
+
+                        Timestamp? time = data['timestamp'];
+                        String formattedTime = time != null
+                            ? DateFormat('h:mm a').format(time.toDate())
+                            : "";
+                        String content =
+                            data['message'] ??
+                            data['text'] ??
+                            data['content'] ??
+                            "";
+                        bool isSeen = data['isSeen'] ?? false;
+                        bool isLatest = (index == 0);
+
+                        return _buildMessageBubble(
+                          doc.id,
+                          content,
+                          data['type'] ?? 'text',
+                          isMe,
+                          showAvatar,
+                          formattedTime,
+                          isSeen,
+                          isLatest,
+                          photoUrl,
+                          deliveryStatus,
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+              _buildInputBar(),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildInputBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -631,226 +966,6 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  PreferredSizeWidget _buildFunctionalAppBar() {
-    return AppBar(
-      backgroundColor: Colors.white,
-      elevation: 1,
-      shadowColor: Colors.grey.withOpacity(0.1),
-      leading: const BackButton(color: Colors.black),
-      titleSpacing: 0,
-      title: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(widget.receiverId)
-            .snapshots(),
-        builder: (context, snapshot) {
-          String name = widget.receiverName;
-          String photoUrl = "";
-          bool isVerified = false;
-          bool isOnline = false;
-          if (snapshot.hasData && snapshot.data!.exists) {
-            final data = snapshot.data!.data() as Map<String, dynamic>;
-            name = data['name'] ?? data['fullName'] ?? name;
-            photoUrl = data['photoUrl'] ?? "";
-            isVerified = data['isVerified'] == true;
-            isOnline = data['isOnline'] ?? false;
-          }
-          return Row(
-            children: [
-              Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Colors.blue.shade100,
-                    backgroundImage: photoUrl.isNotEmpty
-                        ? NetworkImage(photoUrl)
-                        : null,
-                    child: photoUrl.isEmpty
-                        ? Text(
-                            name.isNotEmpty ? name[0].toUpperCase() : "?",
-                            style: TextStyle(
-                              color: Colors.blue.shade800,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          )
-                        : null,
-                  ),
-                  if (isOnline)
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            name,
-                            style: const TextStyle(
-                              color: Colors.black,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                        ),
-                        if (isVerified) ...[
-                          const SizedBox(width: 4),
-                          const Icon(
-                            Icons.verified,
-                            color: Colors.green,
-                            size: 14,
-                          ),
-                        ],
-                      ],
-                    ),
-                    Text(
-                      isOnline ? "Active now" : "Offline",
-                      style: TextStyle(
-                        color: isOnline ? Colors.green : Colors.grey,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.call, color: Color(0xFF2E7EFF)),
-          onPressed: () {},
-        ),
-        IconButton(
-          icon: const Icon(Icons.videocam, color: Color(0xFF2E7EFF)),
-          onPressed: () {},
-        ),
-        IconButton(
-          icon: const Icon(Icons.info_outline, color: Colors.black54),
-          onPressed: () {},
-        ),
-      ],
-    );
-  }
-
-  // --- THE BUILD METHOD IS HERE ---
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
-      appBar: _buildFunctionalAppBar(),
-      body: Column(
-        children: [
-          // LOADING INDICATOR
-          if (_isUploading)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              color: Colors.white,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  SizedBox(
-                    width: 15,
-                    height: 15,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  SizedBox(width: 10),
-                  Text(
-                    "Processing...",
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
-              ),
-            ),
-
-          // 1. MESSAGES LIST
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _chatRepository.getMessagesStream(_chatRoomId),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final messages = snapshot.data!.docs;
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  reverse: true, // Newest messages at the bottom
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 20,
-                  ),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final doc = messages[index];
-                    final data = doc.data() as Map<String, dynamic>;
-                    bool isMe = data['senderId'] == _currentUserId;
-
-                    bool showAvatar = !isMe;
-                    if (index > 0) {
-                      final prevData =
-                          messages[index - 1].data() as Map<String, dynamic>;
-                      if (prevData['senderId'] == data['senderId']) {
-                        showAvatar = false;
-                      }
-                    }
-
-                    Timestamp? time = data['timestamp'];
-                    String formattedTime = "";
-                    if (time != null) {
-                      final dt = time.toDate();
-                      formattedTime = DateFormat('h:mm a').format(dt);
-                    }
-
-                    // --- FIX: Check for 'message', 'text', OR 'content' ---
-                    String content =
-                        data['message'] ??
-                        data['text'] ??
-                        data['content'] ??
-                        "";
-
-                    return _buildMessageBubble(
-                      doc.id,
-                      content, // Passing the reliably found content
-                      data['type'] ?? 'text',
-                      isMe,
-                      showAvatar,
-                      formattedTime,
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-
-          // 2. INPUT BAR
-          _buildInputBar(),
-        ],
       ),
     );
   }

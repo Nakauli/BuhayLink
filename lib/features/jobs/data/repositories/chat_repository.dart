@@ -14,19 +14,21 @@ class ChatRepository {
   // 1. GET MESSAGES (Real-time)
   Stream<QuerySnapshot> getMessagesStream(String chatRoomId) {
     return _firestore
-        .collection('chats')
+        .collection(
+          'chats',
+        ) // Note: Ensure this matches 'chat_rooms' or 'chats' consistently. Your previous code used 'chats', so I kept it.
         .doc(chatRoomId)
         .collection('messages')
         .orderBy('timestamp', descending: true)
         .snapshots();
   }
 
-  // 2. SEND MESSAGE (Updated to support Types: text, image, file, location)
+  // 2. SEND MESSAGE (Updated for Seen & Delete features)
   Future<void> sendMessage(
     String chatRoomId,
     String receiverId,
     String content, {
-    String type = 'text', // Added named parameter
+    String type = 'text',
   }) async {
     final String senderId = _auth.currentUser?.uid ?? "";
     if (senderId.isEmpty || content.trim().isEmpty) return;
@@ -34,10 +36,12 @@ class ChatRepository {
     final messageData = {
       'senderId': senderId,
       'receiverId': receiverId,
-      'message': content.trim(), // Changed key to 'message' to match UI
-      'type': type, // Save the type
+      'message': content.trim(),
+      'type': type,
       'timestamp': FieldValue.serverTimestamp(),
-      'isRead': false,
+      'isRead': false, // For the chat room indicator
+      'isSeen': false, // [NEW] For the double check icon
+      'deletedFor': [], // [NEW] List of user IDs who deleted this message
     };
 
     // Add to sub-collection
@@ -47,23 +51,78 @@ class ChatRepository {
         .collection('messages')
         .add(messageData);
 
-    // Determine Preview Text for the Chat List
+    // Determine Preview Text
     String previewText = content.trim();
-    if (type == 'image')
+    if (type == 'image') {
       previewText = "📷 Image";
-    else if (type == 'file')
+    } else if (type == 'file') {
       previewText = "📎 Attachment";
-    else if (type == 'location')
+    } else if (type == 'location') {
       previewText = "📍 Location";
+    }
 
     // Update Chat Room Metadata
     await _firestore.collection('chats').doc(chatRoomId).set({
-      'lastMessage': previewText, // Shows "📷 Image" instead of URL
+      'lastMessage': previewText,
       'lastTimestamp': FieldValue.serverTimestamp(),
       'users': [senderId, receiverId],
       'lastSenderId': senderId,
       'isRead': false,
     }, SetOptions(merge: true));
+  }
+
+  // [NEW] 2.1 DELETE MESSAGE LOGIC
+  Future<void> deleteMessage(
+    String chatRoomId,
+    String messageId, {
+    required bool forEveryone,
+  }) async {
+    final currentUserId = _auth.currentUser?.uid;
+    if (currentUserId == null) return;
+
+    final docRef = _firestore
+        .collection('chats')
+        .doc(chatRoomId)
+        .collection('messages')
+        .doc(messageId);
+
+    if (forEveryone) {
+      // Hard Delete: Remove the document completely
+      await docRef.delete();
+
+      // Optional: Update last message in chat room if needed (complex, can skip for now)
+    } else {
+      // Soft Delete: Add user ID to 'deletedFor' array
+      await docRef.update({
+        'deletedFor': FieldValue.arrayUnion([currentUserId]),
+      });
+    }
+  }
+
+  // [NEW] 2.2 MARK MESSAGES AS SEEN (Bulk Update)
+  Future<void> markMessagesAsSeen(String chatRoomId, String receiverId) async {
+    // 1. Mark the room as read for the current user
+    await _firestore.collection('chats').doc(chatRoomId).update({
+      'isRead': true,
+    });
+
+    // 2. Mark individual messages as 'isSeen: true'
+    // We only update messages sent BY the other person that are NOT seen yet
+    final snapshot = await _firestore
+        .collection('chats')
+        .doc(chatRoomId)
+        .collection('messages')
+        .where('senderId', isEqualTo: receiverId) // Messages sent BY them
+        .where('isSeen', isEqualTo: false) // That are not seen yet
+        .get();
+
+    final batch = _firestore.batch();
+
+    for (var doc in snapshot.docs) {
+      batch.update(doc.reference, {'isSeen': true});
+    }
+
+    await batch.commit();
   }
 
   // 3. GET ALL CHAT ROOMS
@@ -120,21 +179,6 @@ class ChatRepository {
         ),
       );
     }
-  }
-
-  // 6. MARK MESSAGES AS READ (New Method for UI)
-  Future<void> markMessagesAsRead(String receiverId) async {
-    final currentUser = _auth.currentUser;
-    if (currentUser == null) return;
-
-    List<String> ids = [currentUser.uid, receiverId];
-    ids.sort();
-    String chatRoomId = ids.join("_");
-
-    // Update Room Status
-    await _firestore.collection('chats').doc(chatRoomId).update({
-      'isRead': true,
-    });
   }
 
   Stream<DocumentSnapshot> getUserProfileStream(String userId) {
