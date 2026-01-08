@@ -192,27 +192,25 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
 
   Widget _buildApplicationCard(
     BuildContext context,
-    Map<String, dynamic> data,
+    Map<String, dynamic> appData,
   ) {
-    // 1. Extract Data
-    final String title = data['title'] ?? "Unknown Job";
-    final String price = data['price'] ?? "N/A";
-    final String rawStatus = data['status'] ?? "Applied";
-    final String status = rawStatus.isEmpty ? "Applied" : rawStatus; // Fallback
-    final Timestamp? timestamp = data['timestamp'];
+    // We only rely on Application Data for ID, Status and Date
+    final String jobId = appData['jobId'];
+    final String rawStatus = appData['status'] ?? "Applied";
+    final String status = rawStatus.isEmpty ? "Applied" : rawStatus;
+    final Timestamp? timestamp = appData['timestamp'] ?? appData['appliedDate'];
 
-    // 2. Format Date
+    // 1. Format Date
     String dateStr = "Recently";
     if (timestamp != null) {
       dateStr = DateFormat('MMM d, yyyy').format(timestamp.toDate());
     }
 
-    // 3. COLOR HIERARCHY LOGIC
-    Color statusColor = Colors.orange; // Default: Pending/Applied
+    // 2. Status Badge Config
+    Color statusColor = Colors.orange;
     Color statusBg = Colors.orange.shade50;
     IconData statusIcon = Icons.hourglass_empty_rounded;
     String displayStatus = status;
-
     String lowerStatus = status.toLowerCase();
 
     if (lowerStatus == 'hired') {
@@ -221,7 +219,7 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
       statusIcon = Icons.check_circle_rounded;
       displayStatus = "Hired";
     } else if (lowerStatus == 'completed') {
-      statusColor = const Color(0xFF2E7EFF); // Blue for Completed
+      statusColor = const Color(0xFF2E7EFF);
       statusBg = const Color(0xFF2E7EFF).withOpacity(0.1);
       statusIcon = Icons.task_alt_rounded;
       displayStatus = "Completed";
@@ -231,150 +229,246 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
       statusIcon = Icons.cancel_outlined;
       displayStatus = "Rejected";
     } else {
-      // Default Applied
       displayStatus = "Applied";
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF2E7EFF).withOpacity(0.08),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(24),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(24),
-          onTap: () => _navigateToJob(context, data['jobId']),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Row: Icon + Title
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Gradient Icon Box (Consistent UI)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Icon(
-                        Icons.work_outline,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
+    // --- MAIN FIX: STREAM THE REAL JOB DATA ---
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('jobs')
+          .doc(jobId)
+          .snapshots(),
+      builder: (context, jobSnapshot) {
+        // 3. Fallback Data (if job is loading or deleted)
+        String title =
+            appData['title'] ?? appData['jobTitle'] ?? "Loading Job...";
+        String price = appData['price']?.toString() ?? "N/A";
+        String posterId = appData['posterId'] ?? appData['employerId'] ?? "";
 
-                    // Title and Price
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            price,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF2E7EFF), // Brand color for price
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+        // 4. Overwrite with Live Job Data if available
+        if (jobSnapshot.hasData && jobSnapshot.data!.exists) {
+          final jobData = jobSnapshot.data!.data() as Map<String, dynamic>;
+          title = jobData['title'] ?? title;
+          posterId = jobData['postedBy'] ?? jobData['posterId'] ?? posterId;
 
-                const SizedBox(height: 16),
-                const Divider(height: 1, color: Color(0xFFF0F0F0)),
-                const SizedBox(height: 12),
+          // ✅ FIX: Calculate Price exactly like Job Details Page
+          if (jobData['budgetMin'] != null && jobData['budgetMax'] != null) {
+            price = "₱${jobData['budgetMin']} - ₱${jobData['budgetMax']}";
+          } else {
+            price = jobData['price']?.toString() ?? price;
+          }
+        } else if (jobSnapshot.connectionState == ConnectionState.done &&
+            !jobSnapshot.data!.exists) {
+          title = "Job Unavailable (Deleted)";
+          price = "N/A";
+        }
 
-                // Bottom Row: Date + Colored Status Badge
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
+        // --- SECONDARY STREAM: FETCH EMPLOYER DATA ---
+        return StreamBuilder<DocumentSnapshot>(
+          stream: posterId.isNotEmpty
+              ? FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(posterId)
+                    .snapshots()
+              : null,
+          builder: (context, userSnapshot) {
+            String employerName = "Employer";
+            String? employerPhoto;
+
+            if (userSnapshot.hasData && userSnapshot.data!.exists) {
+              final userData =
+                  userSnapshot.data!.data() as Map<String, dynamic>;
+              employerName =
+                  userData['fullName'] ?? userData['name'] ?? "Employer";
+              employerPhoto = userData['profileImage'] ?? userData['photoUrl'];
+            }
+
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 20,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+                border: Border.all(color: Colors.grey.shade100),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => _navigateToJob(context, jobId, lowerStatus),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.calendar_today_rounded,
-                          size: 14,
-                          color: Colors.grey[400],
+                        // --- TOP ROW: Live Employer Info ---
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 16,
+                              backgroundColor: Colors.grey[100],
+                              backgroundImage:
+                                  (employerPhoto != null &&
+                                      employerPhoto.isNotEmpty)
+                                  ? NetworkImage(employerPhoto)
+                                  : null,
+                              child:
+                                  (employerPhoto == null ||
+                                      employerPhoto.isEmpty)
+                                  ? Text(
+                                      employerName.isNotEmpty
+                                          ? employerName[0].toUpperCase()
+                                          : "E",
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.grey[600],
+                                        fontSize: 12,
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                employerName,
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            // Status Badge
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: statusBg,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    statusIcon,
+                                    size: 12,
+                                    color: statusColor,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    displayStatus,
+                                    style: TextStyle(
+                                      color: statusColor,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          "Applied on $dateStr",
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 12,
-                          ),
+
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Divider(height: 1, color: Color(0xFFF0F0F0)),
+                        ),
+
+                        // --- MIDDLE ROW: Job Info (Live Title & Price) ---
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    style: const TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                      height: 1.2,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    price,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF2E7EFF),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[50],
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                Icons.arrow_forward_ios_rounded,
+                                size: 16,
+                                color: Colors.grey[400],
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // --- BOTTOM ROW: Metadata ---
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today_rounded,
+                              size: 14,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              "Applied on $dateStr",
+                              style: TextStyle(
+                                color: Colors.grey[500],
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-
-                    // DYNAMIC STATUS BADGE
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusBg,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: statusColor.withOpacity(0.2)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(statusIcon, size: 14, color: statusColor),
-                          const SizedBox(width: 4),
-                          Text(
-                            displayStatus,
-                            style: TextStyle(
-                              color: statusColor,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ],
-            ),
-          ),
-        ),
-      ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
-  void _navigateToJob(BuildContext context, String? jobId) async {
+  void _navigateToJob(
+    BuildContext context,
+    String? jobId,
+    String applicationStatus,
+  ) async {
     if (jobId == null) return;
     try {
       DocumentSnapshot jobDoc = await FirebaseFirestore.instance
@@ -396,10 +490,16 @@ class _AppliedJobsPageState extends State<AppliedJobsPage> {
           "status": jobData['status'],
         };
 
+        bool isRejected = applicationStatus == 'rejected';
+
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => JobDetailsPage(job: jobMap, jobId: jobId),
+            builder: (context) => JobDetailsPage(
+              job: jobMap,
+              jobId: jobId,
+              isRejected: isRejected,
+            ),
           ),
         );
       } else {
