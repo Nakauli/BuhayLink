@@ -320,7 +320,7 @@ class _AddJobPageState extends State<AddJobPage> {
                     const SizedBox(height: 12),
                     _buildModernTextField(
                       controller: _durationController,
-                      label: "Duration",
+                      label: "Job Duration",
                       hint: "e.g. 1 Week / Ongoing",
                       icon: Icons.access_time,
                     ),

@@ -21,20 +21,23 @@ class ChatRepository {
         .snapshots();
   }
 
-  // 2. SEND MESSAGE (FIXED: Uses 'lastTimestamp' and 'users')
+  // 2. SEND MESSAGE (Updated to support Types: text, image, file, location)
   Future<void> sendMessage(
     String chatRoomId,
     String receiverId,
-    String text,
-  ) async {
+    String content, {
+    String type = 'text', // Added named parameter
+  }) async {
     final String senderId = _auth.currentUser?.uid ?? "";
-    if (senderId.isEmpty || text.trim().isEmpty) return;
+    if (senderId.isEmpty || content.trim().isEmpty) return;
 
     final messageData = {
       'senderId': senderId,
       'receiverId': receiverId,
-      'text': text.trim(),
+      'message': content.trim(), // Changed key to 'message' to match UI
+      'type': type, // Save the type
       'timestamp': FieldValue.serverTimestamp(),
+      'isRead': false,
     };
 
     // Add to sub-collection
@@ -44,27 +47,34 @@ class ChatRepository {
         .collection('messages')
         .add(messageData);
 
-    // [FIXED] Using 'lastTimestamp' to match your existing data
+    // Determine Preview Text for the Chat List
+    String previewText = content.trim();
+    if (type == 'image')
+      previewText = "📷 Image";
+    else if (type == 'file')
+      previewText = "📎 Attachment";
+    else if (type == 'location')
+      previewText = "📍 Location";
+
+    // Update Chat Room Metadata
     await _firestore.collection('chats').doc(chatRoomId).set({
-      'lastMessage': text.trim(),
-      'lastTimestamp':
-          FieldValue.serverTimestamp(), // Reverted to lastTimestamp
-      'users': [senderId, receiverId], // Reverted to users
+      'lastMessage': previewText, // Shows "📷 Image" instead of URL
+      'lastTimestamp': FieldValue.serverTimestamp(),
+      'users': [senderId, receiverId],
       'lastSenderId': senderId,
       'isRead': false,
     }, SetOptions(merge: true));
   }
 
-  // 3. GET ALL CHAT ROOMS (FIXED QUERY)
+  // 3. GET ALL CHAT ROOMS
   Stream<QuerySnapshot> getAllChatRoomsStream() {
     final String uid = _auth.currentUser?.uid ?? "";
     if (uid.isEmpty) return const Stream.empty();
 
-    // [FIXED] Queries 'users' and sorts by 'lastTimestamp' to find old chats
     return _firestore
         .collection('chats')
         .where('users', arrayContains: uid)
-        .orderBy('lastTimestamp', descending: true) // Reverted to lastTimestamp
+        .orderBy('lastTimestamp', descending: true)
         .snapshots();
   }
 
@@ -110,6 +120,21 @@ class ChatRepository {
         ),
       );
     }
+  }
+
+  // 6. MARK MESSAGES AS READ (New Method for UI)
+  Future<void> markMessagesAsRead(String receiverId) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    List<String> ids = [currentUser.uid, receiverId];
+    ids.sort();
+    String chatRoomId = ids.join("_");
+
+    // Update Room Status
+    await _firestore.collection('chats').doc(chatRoomId).update({
+      'isRead': true,
+    });
   }
 
   Stream<DocumentSnapshot> getUserProfileStream(String userId) {
