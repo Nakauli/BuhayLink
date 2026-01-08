@@ -6,11 +6,14 @@ import 'public_profile_page.dart';
 class JobApplicantsPage extends StatefulWidget {
   final String jobId;
   final String jobTitle;
+  // [NEW] Parameter to filter for hired team only
+  final bool showHiredOnly;
 
   const JobApplicantsPage({
     super.key,
     required this.jobId,
     required this.jobTitle,
+    this.showHiredOnly = false, // Default to showing all applicants
   });
 
   @override
@@ -40,7 +43,7 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
       builder: (context) => AlertDialog(
         title: Text("Hire $applicantName?"),
         content: const Text(
-          "This will mark the job as filled and notify the applicant.",
+          "This will mark them as hired. You can hire multiple people. Click 'Start Job' in the details page when ready.",
         ),
         actions: [
           TextButton(
@@ -86,9 +89,13 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text(
-          "Applicants",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        title: Text(
+          // [UPDATED] Dynamic Title
+          widget.showHiredOnly ? "Hired Team" : "Applicants",
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -114,34 +121,48 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
           }
 
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.people_outline, size: 60, color: Colors.grey),
-                  SizedBox(height: 16),
+                  const Icon(
+                    Icons.people_outline,
+                    size: 60,
+                    color: Colors.grey,
+                  ),
+                  const SizedBox(height: 16),
                   Text(
-                    "No active applicants.",
-                    style: TextStyle(color: Colors.grey),
+                    widget.showHiredOnly
+                        ? "No hired members yet."
+                        : "No active applicants.",
+                    style: const TextStyle(color: Colors.grey),
                   ),
                 ],
               ),
             );
           }
 
-          // FIX: Safer filtering logic
+          // FIX: Safer filtering logic based on showHiredOnly parameter
           final docs = snapshot.data!.docs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
-            // Default to 'pending' if status is missing to prevent hiding new applications
             final status = data['status'] ?? 'pending';
-            return status != 'rejected';
+
+            if (widget.showHiredOnly) {
+              // Only show hired or completed
+              return status == 'hired' || status == 'completed';
+            } else {
+              // Show everyone EXCEPT rejected
+              return status != 'rejected';
+            }
           }).toList();
 
           if (docs.isEmpty) {
-            return const Center(
+            return Center(
               child: Text(
-                "No active applicants (All rejected).",
-                style: TextStyle(color: Colors.grey),
+                widget.showHiredOnly
+                    ? "No hired members yet."
+                    : "No active applicants.",
+                style: const TextStyle(color: Colors.grey),
               ),
             );
           }
@@ -162,14 +183,17 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
 
               // --- Check Status ---
               String status = data['status'] ?? 'pending';
-              bool isHired = status == 'hired';
+              bool isHired = status == 'hired' || status == 'completed';
 
               // --- 4. SWIPE TO REJECT WRAPPER ---
+              // [UPDATED] Disable swipe if we are in "Hired Team" mode
+              bool canDismiss = !widget.showHiredOnly && !isHired;
+
               return Dismissible(
                 key: Key(applicantId),
-                direction: isHired
-                    ? DismissDirection.none
-                    : DismissDirection.endToStart, // Cannot reject if hired
+                direction: canDismiss
+                    ? DismissDirection.endToStart
+                    : DismissDirection.none,
                 background: Container(
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 20),
@@ -210,12 +234,15 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                 },
                 child: InkWell(
                   onTap: () {
+                    // Navigate to Public Profile
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => PublicProfilePage(
                           userId: applicantId,
                           userName: name,
+                          // [FIX]: Set to FALSE so we can see the applicant's resume & skills
+                          isEmployerProfile: false,
                         ),
                       ),
                     );

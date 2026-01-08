@@ -101,6 +101,7 @@ class JobRepository {
       'posterPhoto': posterPhoto,
       'posterRating': 0.0,
       'applicants': 0,
+      'hiredCount': 0, // [NEW] Track count of hired applicants
       'postedAt': FieldValue.serverTimestamp(),
       'status': 'open',
     });
@@ -198,6 +199,7 @@ class JobRepository {
     await batch.commit();
   }
 
+  // [UPDATED] Hire Applicant - Supports Multiple Hires
   Future<void> hireApplicant(
     String jobId,
     String applicantId,
@@ -208,11 +210,7 @@ class JobRepository {
 
     WriteBatch batch = _firestore.batch();
 
-    batch.update(_firestore.collection('jobs').doc(jobId), {
-      'status': 'hired',
-      'hiredApplicantId': applicantId,
-    });
-
+    // 1. Update Applicant Status (Use Merge just in case)
     batch.update(
       _firestore
           .collection('jobs')
@@ -222,6 +220,14 @@ class JobRepository {
       {'status': 'hired'},
     );
 
+    // 2. [NEW] Increment hired count. Keep status 'open' until started.
+    batch.update(_firestore.collection('jobs').doc(jobId), {
+      'hiredCount': FieldValue.increment(1),
+      // We do NOT set 'status': 'hired' here anymore, allowing multiple hires.
+      // 'status' only changes to 'in_progress' when Start Job is clicked.
+    });
+
+    // 3. Update User's Application Status
     DocumentReference userAppRef = _firestore
         .collection('users')
         .doc(applicantId)
@@ -229,15 +235,18 @@ class JobRepository {
         .doc(jobId);
     batch.update(userAppRef, {'status': 'Hired'});
 
+    // 4. Update User Stats
     batch.update(_firestore.collection('users').doc(applicantId), {
       'hiredCompleted': FieldValue.increment(1),
     });
 
+    // 5. Notify
     DocumentReference notifRef = _firestore.collection('notifications').doc();
     batch.set(notifRef, {
       'recipientId': applicantId,
       'title': 'You are Hired!',
-      'message': "Congratulations! You have been hired for $jobTitle.",
+      'message':
+          "Congratulations! You have been hired for $jobTitle. Please wait for the employer to start the job.",
       'type': 'hired',
       'jobId': jobId,
       'timestamp': FieldValue.serverTimestamp(),
@@ -247,15 +256,35 @@ class JobRepository {
     await batch.commit();
   }
 
-  Future<void> rejectApplicant(String jobId, String applicantId) async {
-    await _firestore
-        .collection('jobs')
-        .doc(jobId)
-        .collection('applicants')
-        .doc(applicantId)
-        .update({'status': 'rejected'});
+  // [NEW] Start Job - Transitions status to In Progress
+  Future<void> startJob(String jobId) async {
+    await _firestore.collection('jobs').doc(jobId).update({
+      'status': 'in_progress',
+    });
+  }
 
-    await _firestore.collection('notifications').add({
+  // [UPDATED] Reject Applicant - Decrements Applicant Count
+  Future<void> rejectApplicant(String jobId, String applicantId) async {
+    WriteBatch batch = _firestore.batch();
+
+    // 1. Mark applicant as rejected
+    batch.update(
+      _firestore
+          .collection('jobs')
+          .doc(jobId)
+          .collection('applicants')
+          .doc(applicantId),
+      {'status': 'rejected'},
+    );
+
+    // 2. [FIX] Decrement applicant count on the job card
+    batch.update(_firestore.collection('jobs').doc(jobId), {
+      'applicants': FieldValue.increment(-1),
+    });
+
+    // 3. Notify
+    DocumentReference notifRef = _firestore.collection('notifications').doc();
+    batch.set(notifRef, {
       'recipientId': applicantId,
       'title': 'Application Update',
       'message': "Your application was not selected at this time.",
@@ -264,45 +293,57 @@ class JobRepository {
       'timestamp': FieldValue.serverTimestamp(),
       'read': false,
     });
+
+    await batch.commit();
   }
 
-  // --- MARK JOB COMPLETE ---
-  Future<void> markJobComplete(String jobId, String workerId) async {
+  // [UPDATED] Mark Job Complete - Handles all hired workers
+  Future<void> markJobComplete(String jobId, [String? workerId]) async {
+    // 1. Get all hired applicants if workerId not provided or generally
+    final hiredDocs = await _firestore
+        .collection('jobs')
+        .doc(jobId)
+        .collection('applicants')
+        .where('status', isEqualTo: 'hired')
+        .get();
+
     WriteBatch batch = _firestore.batch();
 
+    // 2. Mark Job as Completed
     batch.update(_firestore.collection('jobs').doc(jobId), {
       'status': 'completed',
     });
 
-    batch.update(
-      _firestore
-          .collection('jobs')
-          .doc(jobId)
-          .collection('applicants')
-          .doc(workerId),
-      {'status': 'completed'},
-    );
+    // 3. Update each hired applicant
+    for (var doc in hiredDocs.docs) {
+      String id = doc.id;
 
-    batch.update(
-      _firestore
-          .collection('users')
-          .doc(workerId)
-          .collection('applications')
-          .doc(jobId),
-      {'status': 'Completed'},
-    );
+      // Update Applicant subcollection status
+      batch.update(doc.reference, {'status': 'completed'});
 
-    DocumentReference notifRef = _firestore.collection('notifications').doc();
-    batch.set(notifRef, {
-      'recipientId': workerId,
-      'title': 'Job Completed',
-      'message':
-          'The employer has marked the job as completed. You can now leave a rating.',
-      'type': 'completed',
-      'jobId': jobId,
-      'timestamp': FieldValue.serverTimestamp(),
-      'read': false,
-    });
+      // Update User's own application list
+      batch.update(
+        _firestore
+            .collection('users')
+            .doc(id)
+            .collection('applications')
+            .doc(jobId),
+        {'status': 'Completed'},
+      );
+
+      // Notify
+      DocumentReference notifRef = _firestore.collection('notifications').doc();
+      batch.set(notifRef, {
+        'recipientId': id,
+        'title': 'Job Completed',
+        'message':
+            'The employer has marked the job as completed. You can now leave a rating.',
+        'type': 'completed',
+        'jobId': jobId,
+        'timestamp': FieldValue.serverTimestamp(),
+        'read': false,
+      });
+    }
 
     await batch.commit();
   }

@@ -20,29 +20,22 @@ class MyPostedJobsPage extends StatelessWidget {
     showDialog(
       context: parentContext,
       builder: (dialogContext) => AlertDialog(
-        // 1. Rename this to 'dialogContext'
         title: const Text("Delete Job?"),
         content: const Text(
           "Are you sure you want to remove this job post? This cannot be undone.",
         ),
         actions: [
           TextButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext), // Use dialogContext to close
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
           ),
           TextButton(
             onPressed: () async {
-              // 1. Close the dialog immediately
               Navigator.pop(dialogContext);
-
-              // 2. Perform the async operation
               await _jobRepository.deleteJob(jobId);
 
-              // 3. CHECK MOUNTED: Ensure the *Parent Page* is still on screen
               if (!parentContext.mounted) return;
 
-              // 4. Use 'parentContext' (The Page) for the SnackBar, NOT the dialog
               ScaffoldMessenger.of(parentContext).showSnackBar(
                 const SnackBar(content: Text("Job deleted successfully")),
               );
@@ -128,9 +121,11 @@ class MyPostedJobsPage extends StatelessWidget {
                 'budgetMin': double.tryParse(minBudgetCtrl.text) ?? 0,
                 'budgetMax': double.tryParse(maxBudgetCtrl.text) ?? 0,
               });
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Job updated successfully!")),
-              );
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Job updated successfully!")),
+                );
+              }
             },
             child: const Text("Save Changes"),
           ),
@@ -165,8 +160,9 @@ class MyPostedJobsPage extends StatelessWidget {
           : StreamBuilder<QuerySnapshot>(
               stream: _getJobStream(uid),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting)
+                if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
+                }
 
                 if (!snapshot.hasData) {
                   return const Center(child: Text("No jobs found"));
@@ -177,8 +173,15 @@ class MyPostedJobsPage extends StatelessWidget {
                 final filteredDocs = allDocs.where((doc) {
                   if (statusFilter.isEmpty) return true;
                   final data = doc.data() as Map<String, dynamic>;
-                  // Check if the job status matches one of the filters
-                  return statusFilter.contains(data['status']);
+                  final status = data['status'];
+
+                  // [LOGIC UPDATE] If filtering for 'hired', also show 'in_progress' jobs
+                  if (statusFilter.contains('hired') &&
+                      status == 'in_progress') {
+                    return true;
+                  }
+
+                  return statusFilter.contains(status);
                 }).toList();
                 // ----------------------------------------------------
 
@@ -219,7 +222,6 @@ class MyPostedJobsPage extends StatelessWidget {
     );
   }
 
-  // --- FIX: Get ALL jobs for this user, we filter in the builder above ---
   Stream<QuerySnapshot> _getJobStream(String uid) {
     return FirebaseFirestore.instance
         .collection('jobs')
@@ -233,7 +235,14 @@ class MyPostedJobsPage extends StatelessWidget {
     Map<String, dynamic> data,
     String jobId,
   ) {
-    bool isClosed = data['status'] == 'closed' || data['status'] == 'hired';
+    String status = data['status'] ?? 'open';
+    // Logic for styling based on status
+    bool isClosed = status == 'closed' || status == 'completed';
+    Color statusColor = Colors.blue;
+    if (status == 'hired') statusColor = Colors.orange;
+    if (status == 'in_progress') statusColor = Colors.purple;
+    if (status == 'completed') statusColor = Colors.green;
+    if (status == 'closed') statusColor = Colors.grey;
 
     return GestureDetector(
       onTap: () {
@@ -244,13 +253,14 @@ class MyPostedJobsPage extends StatelessWidget {
           "location": data['location'],
           "user": data['posterName'],
           "posterId": data['postedBy'],
-          "hiredApplicantId": data['hiredApplicantId'], // Pass this for rating
+          "hiredApplicantId": data['hiredApplicantId'],
+          "hiredCount": data['hiredCount'], // Pass hired count
           "rating": "Me",
           "applicants": "${data['applicants'] ?? 0} applicants",
           "duration": data['duration'] ?? "N/A",
           "isUrgent": data['isUrgent'] ?? false,
           "description": data['description'] ?? "",
-          "status": data['status'], // Pass status
+          "status": data['status'],
         };
 
         Navigator.push(
@@ -259,7 +269,8 @@ class MyPostedJobsPage extends StatelessWidget {
             builder: (context) => JobDetailsPage(
               job: jobMap,
               jobId: jobId,
-              isHired: data['status'] == 'hired',
+              // [UPDATED LOGIC] Consider it 'isHired' mode if status is hired OR in_progress
+              isHired: status == 'hired' || status == 'in_progress',
             ),
           ),
         );
@@ -302,15 +313,15 @@ class MyPostedJobsPage extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: isClosed ? Colors.grey[200] : Colors.green[50],
+                    color: statusColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    (data['status'] ?? "Open").toString().toUpperCase(),
+                    status.toUpperCase().replaceAll('_', ' '),
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      color: isClosed ? Colors.grey : Colors.green,
+                      color: statusColor,
                     ),
                   ),
                 ),
@@ -328,6 +339,23 @@ class MyPostedJobsPage extends StatelessWidget {
                   style: TextStyle(color: Colors.grey[600], fontSize: 13),
                 ),
                 const SizedBox(width: 16),
+
+                // Show Hired Count if > 0
+                if (data['hiredCount'] != null &&
+                    (data['hiredCount'] as int) > 0) ...[
+                  Icon(
+                    Icons.check_circle_outline,
+                    size: 16,
+                    color: Colors.green[500],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    "${data['hiredCount']} Hired",
+                    style: TextStyle(color: Colors.green[600], fontSize: 13),
+                  ),
+                  const SizedBox(width: 16),
+                ],
+
                 Icon(Icons.calendar_today, size: 16, color: Colors.grey[500]),
                 const SizedBox(width: 4),
                 Text(
