@@ -642,14 +642,19 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         }
         return GestureDetector(
           onTap: () {
-            if (userId.isNotEmpty)
+            if (userId.isNotEmpty) {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                      PublicProfilePage(userId: userId, userName: name),
+                  builder: (_) => PublicProfilePage(
+                    userId: userId,
+                    userName: name,
+                    // [FIX] Correct parameter passed: isEmployerProfile
+                    isEmployerProfile: true,
+                  ),
                 ),
               );
+            }
           },
           child: Container(
             padding: const EdgeInsets.all(16),

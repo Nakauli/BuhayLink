@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../jobs/data/repositories/job_repository.dart';
 import '../../../jobs/data/repositories/chat_repository.dart';
 
@@ -9,8 +10,7 @@ class PublicProfilePage extends StatefulWidget {
   final String? jobId;
   final String? jobTitle;
 
-  // 1. ADD THIS NEW PARAMETER
-  // If true, we force hide the skills section (perfect for Job Details view)
+  // [FIXED] Single optional parameter. Old 'isEmployer' is removed.
   final bool isEmployerProfile;
 
   const PublicProfilePage({
@@ -19,8 +19,7 @@ class PublicProfilePage extends StatefulWidget {
     required this.userName,
     this.jobId,
     this.jobTitle,
-    this.isEmployerProfile =
-        false, // Defaults to false so it works normally for seekers
+    this.isEmployerProfile = false, // Defaults to false (Worker View)
   });
 
   @override
@@ -121,6 +120,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? "";
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       extendBodyBehindAppBar: true,
@@ -138,8 +139,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 
           final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
 
-          // --- LOGIC TO HIDE SKILLS ---
-          // Check DB role field
+          // --- LOGIC TO HIDE SKILLS & RESUME ---
           final String role = data['role'] ?? 'user';
           final bool dbSaysEmployer = role.toLowerCase() == 'employer';
 
@@ -318,7 +318,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                       ),
                       _buildVerticalDivider(),
                       _buildStatItem(
-                        "Hired",
+                        // Contextual Label change
+                        widget.isEmployerProfile ? "Jobs Posted" : "Hired",
                         data['hiredCompleted']?.toString() ?? "0",
                         Icons.handshake_rounded,
                         Colors.green,
@@ -397,37 +398,42 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                           ),
                           const SizedBox(height: 12),
                         ],
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              _chatRepository.startChat(
-                                context,
-                                widget.userId,
-                                name,
-                                photoUrl,
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF2E7EFF),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+
+                        // Message Button (Only if not own profile)
+                        if (currentUserId != widget.userId)
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                _chatRepository.startChat(
+                                  context,
+                                  widget.userId,
+                                  name,
+                                  photoUrl,
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2E7EFF),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                               ),
-                            ),
-                            icon: const Icon(
-                              Icons.chat_bubble_outline,
-                              color: Colors.white,
-                            ),
-                            label: const Text(
-                              "Send Message",
-                              style: TextStyle(
+                              icon: const Icon(
+                                Icons.chat_bubble_outline,
                                 color: Colors.white,
-                                fontWeight: FontWeight.bold,
+                              ),
+                              label: const Text(
+                                "Send Message",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -438,7 +444,10 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
                     children: [
-                      if (hasResume && resumeData != null) ...[
+                      // --- 2. THE FIX: Only show resume if NOT hidden ---
+                      if (hasResume &&
+                          resumeData != null &&
+                          !shouldHideSkills) ...[
                         _buildResumeCard(resumeData),
                         const SizedBox(height: 16),
                       ],
@@ -449,8 +458,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                         Colors.orange,
                       ),
 
-                      // --- 2. THE FIX: Only show skills if NOT hidden ---
-                      // This ensures even if the DB has plumbing skills, we hide them for employers
+                      // --- 3. THE FIX: Only show skills if NOT hidden ---
                       if (skills.isNotEmpty && !shouldHideSkills)
                         _buildSkillsCard(skills),
 
@@ -467,13 +475,10 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     );
   }
 
-  // ... (Keep existing _buildResumeCard, _buildInfoCard, _buildSkillsCard, _buildReviewsList, _buildStatItem, _buildVerticalDivider, _buildDecisionBanner as they were)
-
-  // Just to be safe, I'm including the helper widgets below so you can copy-paste the whole file if needed.
+  // --- HELPER WIDGETS ---
 
   Widget _buildResumeCard(Map<String, dynamic> resume) {
     List<dynamic> experience = resume['experience'] ?? [];
-    // List<dynamic> education = resume['education'] ?? []; // Unused in UI currently
     String summary = resume['summary'] ?? "No summary provided.";
 
     return Container(
