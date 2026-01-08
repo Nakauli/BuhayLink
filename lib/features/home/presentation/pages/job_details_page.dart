@@ -83,8 +83,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     }
   }
 
-  // ... (Keep existing _markAsComplete, _showRatingDialog, _applyForJob, _toggleSaveJob, _confirmDelete, _showEditDialog logic same as before)
-
   Future<void> _markAsComplete(Map<String, dynamic> liveData) async {
     bool? confirm = await showDialog(
       context: context,
@@ -305,6 +303,16 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
           appBar: AppBar(
             backgroundColor: Colors.transparent,
             elevation: 0,
+            centerTitle: true, // ✅ Centers the title
+            title: const Text(
+              // ✅ Added Title
+              "Job Details",
+              style: TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
             leading: Padding(
               padding: const EdgeInsets.only(left: 16, top: 8, bottom: 8),
               child: CircleAvatar(
@@ -482,7 +490,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                           Expanded(
                             child: _buildInfoCard(
                               Icons.access_time_filled,
-                              "Duration",
+                              "Job Duration",
                               data['duration'] ?? "N/A",
                             ),
                           ),
