@@ -66,7 +66,6 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("You hired $applicantName!")));
-        // We DO NOT pop here anymore, so you can see the button change to "Hired" immediately
         setState(() {});
       }
     }
@@ -96,7 +95,6 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
         leading: const BackButton(color: Colors.black),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // FIX 1: Simplified Query
         stream: FirebaseFirestore.instance
             .collection('jobs')
             .doc(widget.jobId)
@@ -131,16 +129,18 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
             );
           }
 
-          // FIX 2: Manual Filtering
+          // FIX: Safer filtering logic
           final docs = snapshot.data!.docs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
-            return data['status'] != 'rejected';
+            // Default to 'pending' if status is missing to prevent hiding new applications
+            final status = data['status'] ?? 'pending';
+            return status != 'rejected';
           }).toList();
 
           if (docs.isEmpty) {
             return const Center(
               child: Text(
-                "No active applicants.",
+                "No active applicants (All rejected).",
                 style: TextStyle(color: Colors.grey),
               ),
             );
@@ -160,7 +160,7 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
               String photoUrl = data['photoUrl'] ?? "";
               Timestamp? appliedAt = data['appliedAt'];
 
-              // --- FIX 3: Check Status ---
+              // --- Check Status ---
               String status = data['status'] ?? 'pending';
               bool isHired = status == 'hired';
 
@@ -293,7 +293,7 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                           ),
                         ),
 
-                        // --- FIX 4: SHOW HIRED BADGE OR HIRE BUTTON ---
+                        // --- SHOW HIRED BADGE OR HIRE BUTTON ---
                         if (isHired)
                           Container(
                             padding: const EdgeInsets.symmetric(
