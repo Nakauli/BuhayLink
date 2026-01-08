@@ -177,54 +177,53 @@ class _CreateResumePageState extends State<CreateResumePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text(
-          "Build Your Resume",
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Stack(
-        children: [
-          // 1. BACKGROUND GRADIENT HEADER
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 250,
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
-                ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
+      // [UX FIX] Used CustomScrollView with SliverAppBar so the header pins
+      // and doesn't make text unreadable when scrolling up.
+      body: CustomScrollView(
+        slivers: [
+          // 1. SLIVER APP BAR (The Gradient Header)
+          SliverAppBar(
+            expandedHeight: 120.0,
+            floating: false,
+            pinned: true, // Keeps "Build Your Resume" visible
+            backgroundColor: const Color(0xFF2E7EFF), // Fallback color
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF2E7EFF), Color(0xFF9C27B0)],
+                  ),
                 ),
               ),
             ),
+            title: const Text(
+              "Build Your Resume",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            centerTitle: true,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+              onPressed: () => Navigator.pop(context),
+            ),
           ),
 
-          // 2. FORM CONTENT
-          SafeArea(
+          // 2. THE FORM CONTENT
+          SliverToBoxAdapter(
             child: Form(
               key: _formKey,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
                 child: Column(
                   children: [
                     const Text(
                       "Craft your professional profile to stand out.",
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                      // [UX FIX] Grey color ensures readability on white background
+                      style: TextStyle(color: Colors.grey, fontSize: 14),
                     ),
                     const SizedBox(height: 20),
 
