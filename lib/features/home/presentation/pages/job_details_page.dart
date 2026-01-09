@@ -31,7 +31,8 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
   bool _isApplying = false;
   bool _hasApplied = false;
   bool _isSaved = false;
-  bool _hasRated = false; // Only used for Worker rating Employer
+  bool _hasRated = false; // Used for Worker rating Employer
+  bool _allWorkersRated = false; // [NEW] Check if employer rated everyone
   bool _isLoadingState = true;
 
   @override
@@ -51,14 +52,18 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
       ]);
 
       bool rated = false;
+      bool allRated = false;
 
-      // [UPDATED] Logic: Only check rating status here if I am the WORKER rating the EMPLOYER.
       final String posterId =
           widget.job['posterId'] ?? widget.job['postedBy'] ?? "";
 
+      // 1. Worker Check: Did I rate the employer?
       if (currentUser.uid != posterId) {
-        // I am a worker, check if I have rated the employer for this job
         rated = await _jobRepository.hasUserRated(posterId, widget.jobId);
+      }
+      // 2. Employer Check: Did I rate ALL hired workers?
+      else {
+        allRated = await _checkIfAllWorkersRated();
       }
 
       if (mounted) {
@@ -66,6 +71,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
           _hasApplied = results[0];
           _isSaved = results[1];
           _hasRated = rated;
+          _allWorkersRated = allRated; // [NEW]
           _isLoadingState = false;
         });
       }
@@ -74,9 +80,38 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     }
   }
 
-  // [NEW] Start Job Logic (Updated for Safety)
+  // [NEW] Helper to check if all hired workers are rated
+  Future<bool> _checkIfAllWorkersRated() async {
+    try {
+      // Get all hired applicants for this job
+      final snapshot = await FirebaseFirestore.instance
+          .collection('jobs')
+          .doc(widget.jobId)
+          .collection('applicants')
+          .where('status', whereIn: ['hired', 'completed'])
+          .get();
+
+      if (snapshot.docs.isEmpty) return true; // No one to rate
+
+      for (var doc in snapshot.docs) {
+        String applicantId = doc.id;
+        // Check if I rated this specific applicant
+        bool isRated = await _jobRepository.hasUserRated(
+          applicantId,
+          widget.jobId,
+        );
+        if (!isRated) {
+          return false; // Found someone unrated
+        }
+      }
+      return true; // Everyone is rated
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // [NEW] Start Job Logic
   Future<void> _startJob() async {
-    // 1. Double check confirmation
     bool? confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -101,7 +136,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
       ),
     );
 
-    // 2. Execute
     if (confirm == true) {
       try {
         await _jobRepository.startJob(widget.jobId);
@@ -123,7 +157,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     }
   }
 
-  // [UPDATED] Mark Complete (Handles state transition)
+  // [UPDATED] Mark Complete
   Future<void> _markAsComplete() async {
     bool? confirm = await showDialog(
       context: context,
@@ -167,19 +201,24 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     }
   }
 
-  // [UPDATED] Helper to navigate to list view (for Viewing or Rating)
-  void _viewHiredApplicants(String title, {bool allowRating = false}) {
-    Navigator.push(
+  // [UPDATED] View Hired Applicants -> Check rating status when returning
+  void _viewHiredApplicants(String title, {bool allowRating = false}) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => JobApplicantsPage(
           jobId: widget.jobId,
           jobTitle: title,
-          showHiredOnly: true, // Only show the team
-          allowRating: allowRating, // Enable rating buttons if completed
+          showHiredOnly: true,
+          allowRating: allowRating,
         ),
       ),
     );
+
+    // [NEW] Refresh state when coming back from list to see if everyone is rated now
+    if (allowRating) {
+      _loadInitialState();
+    }
   }
 
   void _showRatingDialog(Map<String, dynamic> liveData) {
@@ -189,8 +228,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
 
     final String employerId = liveData['posterId'] ?? liveData['postedBy'];
 
-    // Safety check
-    if (currentUser.uid == employerId) return; // Employers don't rate here
+    if (currentUser.uid == employerId) return;
 
     showDialog(
       context: context,
@@ -303,20 +341,18 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
           .doc(widget.jobId)
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            backgroundColor: Colors.white,
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (!snapshot.hasData || !snapshot.data!.exists) {
-          return Scaffold(
-            appBar: AppBar(),
-            body: const Center(child: Text("Job not found.")),
-          );
+        // [UX FIX] Remove the "ConnectionState.waiting" block.
+        // Instead, use the data passed from the previous screen (widget.job)
+        // as the initial data while the stream connects. This stops the flicker.
+
+        Map<String, dynamic> data = widget.job; // Start with passed data
+
+        // If stream has newer data, use that instead
+        if (snapshot.hasData && snapshot.data!.exists) {
+          data = snapshot.data!.data() as Map<String, dynamic>;
         }
 
-        final data = snapshot.data!.data() as Map<String, dynamic>;
+        // Basic variables
         final currentUser = FirebaseAuth.instance.currentUser;
         final String currentUid = currentUser?.uid ?? "";
         final String posterId = data['posterId'] ?? data['postedBy'] ?? "";
@@ -381,6 +417,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
               ),
             ],
           ),
+          // [UX FIX] Bottom bar logic kept exactly the same
           bottomNavigationBar: _isLoadingState
               ? Container(
                   height: 100,
@@ -832,10 +869,8 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
-              onPressed: () => _viewHiredApplicants(
-                data['title'],
-                allowRating: false,
-              ), // View only
+              onPressed: () =>
+                  _viewHiredApplicants(data['title'], allowRating: false),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
@@ -857,13 +892,18 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         ],
       );
     } else if (status == 'completed') {
+      // [FIXED] If _allWorkersRated is true, disable the button.
+      // This logic relies on the FutureBuilder inside initState to have run.
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton(
-          onPressed: () =>
-              _viewHiredApplicants(data['title'], allowRating: true),
-          style: _primaryBtnStyle(Colors.amber[800]!),
-          child: const Text("Rate Workers"),
+          onPressed: _allWorkersRated
+              ? null // Disabled if everyone is rated
+              : () => _viewHiredApplicants(data['title'], allowRating: true),
+          style: _primaryBtnStyle(
+            _allWorkersRated ? Colors.grey : Colors.amber[800]!,
+          ),
+          child: Text(_allWorkersRated ? "All Workers Rated" : "Rate Workers"),
         ),
       );
     }
