@@ -115,7 +115,7 @@ class _MessagesPageState extends State<MessagesPage> {
           ),
 
           // --- 2. CHAT LIST ---
-          Expanded(
+          EExpanded(
             child: _currentUserId.isEmpty
                 ? const Center(child: Text("Please login to see messages"))
                 : StreamBuilder<QuerySnapshot>(
@@ -166,6 +166,15 @@ class _MessagesPageState extends State<MessagesPage> {
                       final chatRooms = snapshot.data!.docs;
 
                       return ListView.separated(
+                        // [FIX START] Smooth Scrolling Optimizations
+                        // This pre-loads the "StreamBuilder" inside your tiles before they appear
+                        cacheExtent: 2000.0,
+                        addRepaintBoundaries: true,
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
+
+                        // [FIX END]
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 20,
