@@ -115,7 +115,7 @@ class _MessagesPageState extends State<MessagesPage> {
           ),
 
           // --- 2. CHAT LIST ---
-          EExpanded(
+          Expanded(
             child: _currentUserId.isEmpty
                 ? const Center(child: Text("Please login to see messages"))
                 : StreamBuilder<QuerySnapshot>(

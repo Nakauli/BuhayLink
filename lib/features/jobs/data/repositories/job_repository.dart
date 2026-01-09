@@ -101,7 +101,7 @@ class JobRepository {
       'posterPhoto': posterPhoto,
       'posterRating': 0.0,
       'applicants': 0,
-      'hiredCount': 0, // [NEW] Track count of hired applicants
+      'hiredCount': 0,
       'postedAt': FieldValue.serverTimestamp(),
       'status': 'open',
     });
@@ -199,7 +199,7 @@ class JobRepository {
     await batch.commit();
   }
 
-  // [UPDATED] Hire Applicant - Supports Multiple Hires
+  // [FIXED] Hire Applicant - Uses Set(Merge) to prevent "Document Not Found" crash
   Future<void> hireApplicant(
     String jobId,
     String applicantId,
@@ -210,35 +210,38 @@ class JobRepository {
 
     WriteBatch batch = _firestore.batch();
 
-    // 1. Update Applicant Status (Use Merge just in case)
-    batch.update(
+    // 1. Update Applicant Status (Use SET with MERGE to avoid crash)
+    batch.set(
       _firestore
           .collection('jobs')
           .doc(jobId)
           .collection('applicants')
           .doc(applicantId),
       {'status': 'hired'},
+      SetOptions(merge: true), // [FIX] Prevents crash if doc missing
     );
 
-    // 2. [NEW] Increment hired count. Keep status 'open' until started.
+    // 2. Increment hired count.
     batch.update(_firestore.collection('jobs').doc(jobId), {
       'hiredCount': FieldValue.increment(1),
-      // We do NOT set 'status': 'hired' here anymore, allowing multiple hires.
-      // 'status' only changes to 'in_progress' when Start Job is clicked.
     });
 
-    // 3. Update User's Application Status
+    // 3. Update User's Application Status (Use SET with MERGE)
     DocumentReference userAppRef = _firestore
         .collection('users')
         .doc(applicantId)
         .collection('applications')
         .doc(jobId);
-    batch.update(userAppRef, {'status': 'Hired'});
+    batch.set(
+      userAppRef,
+      {'status': 'Hired'},
+      SetOptions(merge: true), // [FIX] Prevents crash
+    );
 
-    // 4. Update User Stats
-    batch.update(_firestore.collection('users').doc(applicantId), {
+    // 4. Update User Stats (Safe Update)
+    batch.set(_firestore.collection('users').doc(applicantId), {
       'hiredCompleted': FieldValue.increment(1),
-    });
+    }, SetOptions(merge: true));
 
     // 5. Notify
     DocumentReference notifRef = _firestore.collection('notifications').doc();
@@ -263,21 +266,22 @@ class JobRepository {
     });
   }
 
-  // [UPDATED] Reject Applicant - Decrements Applicant Count
+  // [UPDATED] Reject Applicant - Uses Set(Merge) for safety
   Future<void> rejectApplicant(String jobId, String applicantId) async {
     WriteBatch batch = _firestore.batch();
 
-    // 1. Mark applicant as rejected
-    batch.update(
+    // 1. Mark applicant as rejected (Safe)
+    batch.set(
       _firestore
           .collection('jobs')
           .doc(jobId)
           .collection('applicants')
           .doc(applicantId),
       {'status': 'rejected'},
+      SetOptions(merge: true),
     );
 
-    // 2. [FIX] Decrement applicant count on the job card
+    // 2. Decrement applicant count
     batch.update(_firestore.collection('jobs').doc(jobId), {
       'applicants': FieldValue.increment(-1),
     });
@@ -297,9 +301,8 @@ class JobRepository {
     await batch.commit();
   }
 
-  // [UPDATED] Mark Job Complete - Handles all hired workers
+  // [UPDATED] Mark Job Complete - Safe Updates
   Future<void> markJobComplete(String jobId, [String? workerId]) async {
-    // 1. Get all hired applicants if workerId not provided or generally
     final hiredDocs = await _firestore
         .collection('jobs')
         .doc(jobId)
@@ -309,26 +312,29 @@ class JobRepository {
 
     WriteBatch batch = _firestore.batch();
 
-    // 2. Mark Job as Completed
+    // 1. Mark Job as Completed
     batch.update(_firestore.collection('jobs').doc(jobId), {
       'status': 'completed',
     });
 
-    // 3. Update each hired applicant
+    // 2. Update each hired applicant
     for (var doc in hiredDocs.docs) {
       String id = doc.id;
 
-      // Update Applicant subcollection status
-      batch.update(doc.reference, {'status': 'completed'});
+      // Update Applicant subcollection status (Safe)
+      batch.set(doc.reference, {
+        'status': 'completed',
+      }, SetOptions(merge: true));
 
-      // Update User's own application list
-      batch.update(
+      // Update User's own application list (Safe)
+      batch.set(
         _firestore
             .collection('users')
             .doc(id)
             .collection('applications')
             .doc(jobId),
         {'status': 'Completed'},
+        SetOptions(merge: true),
       );
 
       // Notify

@@ -647,6 +647,14 @@ class _SearchPageState extends State<SearchPage> {
                     const SizedBox(height: 12),
                     Expanded(
                       child: ListView.separated(
+                        // [FIX START] Smooth Scrolling Optimizations
+                        cacheExtent: 2000.0, // Pre-renders items to prevent lag
+                        addRepaintBoundaries: true, // Optimizes rendering
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
+
+                        // [FIX END]
                         padding: const EdgeInsets.symmetric(
                           horizontal: 24,
                           vertical: 10,

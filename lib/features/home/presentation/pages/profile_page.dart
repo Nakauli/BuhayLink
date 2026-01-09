@@ -271,7 +271,6 @@ class _ProfilePageState extends State<ProfilePage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
           title: const Text("Skills"),
-          // --- FIX: Wrap in SingleChildScrollView to prevent overflow ---
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -294,7 +293,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                // Limit the height if the list gets huge, though scroll view handles it generally
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
@@ -337,7 +335,6 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       extendBodyBehindAppBar: true,
-      // Removed standard AppBar to customize header fully
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('users')
@@ -373,15 +370,14 @@ class _ProfilePageState extends State<ProfilePage> {
             padding: EdgeInsets.zero,
             child: Column(
               children: [
-                // 1. UPDATED EPIC HEADER
+                // 1. HEADER
                 SizedBox(
-                  height: 280, // Increased height for the title
+                  height: 280,
                   child: Stack(
                     alignment: Alignment.topCenter,
                     children: [
-                      // Gradient Background
                       Container(
-                        height: 200, // Taller gradient area
+                        height: 200,
                         width: double.infinity,
                         decoration: const BoxDecoration(
                           gradient: LinearGradient(
@@ -394,7 +390,6 @@ class _ProfilePageState extends State<ProfilePage> {
                             bottomRight: Radius.circular(32),
                           ),
                         ),
-                        // HEADER CONTENT (Title + Logout) inside Safe Area
                         child: SafeArea(
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
@@ -413,7 +408,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                     color: Colors.white,
                                   ),
                                 ),
-                                // Logout Button (Clean, no background)
                                 IconButton(
                                   icon: const Icon(
                                     Icons.logout,
@@ -428,10 +422,8 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                         ),
                       ),
-
-                      // Profile Picture & Camera Button
                       Positioned(
-                        top: 140, // Adjusted position to overlap nicely
+                        top: 140,
                         child: SizedBox(
                           width: 120,
                           height: 120,
@@ -469,7 +461,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                       : null,
                                 ),
                               ),
-
                               Positioned(
                                 bottom: 0,
                                 right: 0,
@@ -512,7 +503,6 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    // EDIT NAME BUTTON
                     GestureDetector(
                       onTap: () => _showEditDialog(
                         "Name",
@@ -602,7 +592,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
                 const SizedBox(height: 30),
 
-                // 4. COMPACT STATS GRID
+                // 4. COMPACT STATS GRID (User Activity)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Column(
@@ -663,6 +653,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
                       const SizedBox(height: 24),
 
+                      // --- EMPLOYER DASHBOARD (UPDATED) ---
                       _buildSectionHeader(
                         "Employer Dashboard",
                         Icons.business_center_rounded,
@@ -671,21 +662,35 @@ class _ProfilePageState extends State<ProfilePage> {
                       StreamBuilder<QuerySnapshot>(
                         stream: _dashboardRepo.getMyPostsStream(),
                         builder: (context, jobSnap) {
-                          int active = 0, hired = 0, total = 0;
+                          int active = 0, hired = 0, completed = 0;
+
                           if (jobSnap.hasData) {
-                            total = jobSnap.data!.docs.length;
-                            active = jobSnap.data!.docs
-                                .where((d) => d['status'] == 'open')
-                                .length;
-                            hired = jobSnap.data!.docs
-                                .where(
-                                  (d) =>
-                                      ['hired', 'closed'].contains(d['status']),
-                                )
-                                .length;
+                            final docs = jobSnap.data!.docs;
+
+                            // 1. Calculate Active Jobs (Open or In Progress)
+                            active = docs.where((d) {
+                              final data = d.data() as Map<String, dynamic>;
+                              return data['status'] == 'open' ||
+                                  data['status'] == 'in_progress';
+                            }).length;
+
+                            // 2. Calculate Total People Hired (Sum of hiredCount)
+                            for (var doc in docs) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              int count = (data['hiredCount'] ?? 0) as int;
+                              hired += count;
+                            }
+
+                            // 3. [NEW] Calculate Completed Jobs
+                            completed = docs.where((d) {
+                              final data = d.data() as Map<String, dynamic>;
+                              return data['status'] == 'completed';
+                            }).length;
                           }
+
                           return Row(
                             children: [
+                              // ACTIVE BUTTON
                               Expanded(
                                 child: _CompactStatItem(
                                   label: "Active",
@@ -697,13 +702,15 @@ class _ProfilePageState extends State<ProfilePage> {
                                     MaterialPageRoute(
                                       builder: (_) => MyPostedJobsPage(
                                         title: "Active",
-                                        statusFilter: ['open'],
+                                        statusFilter: ['open', 'in_progress'],
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 12),
+
+                              // HIRED BUTTON
                               Expanded(
                                 child: _CompactStatItem(
                                   label: "Hired",
@@ -715,25 +722,34 @@ class _ProfilePageState extends State<ProfilePage> {
                                     MaterialPageRoute(
                                       builder: (_) => MyPostedJobsPage(
                                         title: "Hired",
-                                        statusFilter: ['hired', 'closed'],
+                                        // Shows Hired and Closed/Completed jobs where you hired someone
+                                        statusFilter: [
+                                          'hired',
+                                          'closed',
+                                          'completed',
+                                        ],
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 12),
+
+                              // [UPDATED] COMPLETED BUTTON (Was "Total")
                               Expanded(
                                 child: _CompactStatItem(
-                                  label: "Total",
-                                  value: "$total",
-                                  color: Colors.grey,
-                                  icon: Icons.folder_open_rounded,
+                                  label: "Completed",
+                                  value:
+                                      "$completed", // Now counts completed jobs
+                                  color: Colors
+                                      .teal, // Changed color to indicate success
+                                  icon: Icons.task_alt_rounded, // Changed icon
                                   onTap: () => Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (_) => MyPostedJobsPage(
-                                        title: "All",
-                                        statusFilter: [],
+                                        title: "Completed",
+                                        statusFilter: ['completed'],
                                       ),
                                     ),
                                   ),
