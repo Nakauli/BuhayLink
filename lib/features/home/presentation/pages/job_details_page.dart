@@ -53,7 +53,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
       bool rated = false;
 
       // [UPDATED] Logic: Only check rating status here if I am the WORKER rating the EMPLOYER.
-      // Employers rate workers inside the 'JobApplicantsPage', so we don't check it here.
       final String posterId =
           widget.job['posterId'] ?? widget.job['postedBy'] ?? "";
 
@@ -818,7 +817,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                // Safety: Only allow click if hired > 0
                 onPressed: _startJob,
                 style: _primaryBtnStyle(Colors.green),
                 child: Text("Start Job ($hiredCount Hired)"),
@@ -859,7 +857,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         ],
       );
     } else if (status == 'completed') {
-      // Logic: Owner rates multiple people, so we send them to the list view.
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton(
@@ -873,16 +870,38 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     return const SizedBox.shrink();
   }
 
+  // [FIXED] Updated to check if current user is the hired worker
   Widget _buildWorkerActionButton(String status, Map<String, dynamic> data) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final String currentUid = currentUser?.uid ?? "";
+    final String hiredId = data['hiredApplicantId'] ?? "";
+
     if (status == 'completed') {
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          onPressed: _hasRated ? null : () => _showRatingDialog(data),
-          style: _primaryBtnStyle(_hasRated ? Colors.grey : Colors.amber[800]!),
-          child: Text(_hasRated ? "You Rated This Employer" : "Rate Employer"),
-        ),
-      );
+      // CHECK: Is this the hired worker?
+      if (currentUid == hiredId) {
+        return SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _hasRated ? null : () => _showRatingDialog(data),
+            style: _primaryBtnStyle(
+              _hasRated ? Colors.grey : Colors.amber[800]!,
+            ),
+            child: Text(
+              _hasRated ? "You Rated This Employer" : "Rate Employer",
+            ),
+          ),
+        );
+      } else {
+        // Not the hired worker (just an observer or rejected applicant)
+        return SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: null, // Disabled
+            style: _primaryBtnStyle(Colors.grey),
+            child: const Text("Job Completed"),
+          ),
+        );
+      }
     }
 
     return SizedBox(
