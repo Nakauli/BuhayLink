@@ -31,9 +31,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
   bool _isApplying = false;
   bool _hasApplied = false;
   bool _isSaved = false;
-  bool _hasRated = false;
-
-  // UX Fix: Start loading as TRUE to prevent button flicker
+  bool _hasRated = false; // Only used for Worker rating Employer
   bool _isLoadingState = true;
 
   @override
@@ -47,27 +45,21 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     if (currentUser == null) return;
 
     try {
-      // Fetch async data in parallel for speed
       final results = await Future.wait([
         _jobRepository.hasApplied(widget.jobId),
         _jobRepository.isJobSaved(widget.jobId),
       ]);
 
       bool rated = false;
-      String targetId = "";
+
+      // [UPDATED] Logic: Only check rating status here if I am the WORKER rating the EMPLOYER.
+      // Employers rate workers inside the 'JobApplicantsPage', so we don't check it here.
       final String posterId =
           widget.job['posterId'] ?? widget.job['postedBy'] ?? "";
-      final String hiredId = widget.job['hiredApplicantId'] ?? "";
 
-      // Logic to check if rating is allowed/done
-      if (currentUser.uid == posterId) {
-        targetId = hiredId;
-      } else if (currentUser.uid == hiredId) {
-        targetId = posterId;
-      }
-
-      if (targetId.isNotEmpty) {
-        rated = await _jobRepository.hasUserRated(targetId, widget.jobId);
+      if (currentUser.uid != posterId) {
+        // I am a worker, check if I have rated the employer for this job
+        rated = await _jobRepository.hasUserRated(posterId, widget.jobId);
       }
 
       if (mounted) {
@@ -75,7 +67,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
           _hasApplied = results[0];
           _isSaved = results[1];
           _hasRated = rated;
-          _isLoadingState = false; // Reveal the UI only after data is ready
+          _isLoadingState = false;
         });
       }
     } catch (e) {
@@ -83,14 +75,15 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     }
   }
 
-  // [NEW] Start Job Logic
+  // [NEW] Start Job Logic (Updated for Safety)
   Future<void> _startJob() async {
+    // 1. Double check confirmation
     bool? confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Start Job?"),
         content: const Text(
-          "This will officially start the job with the current hired applicants. No more applicants can be hired.",
+          "This will close applications and change the status to 'In Progress'.\n\nOnly the currently hired applicants will be part of the job.",
         ),
         actions: [
           TextButton(
@@ -101,6 +94,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2E7EFF),
+              foregroundColor: Colors.white,
             ),
             child: const Text("Start Now"),
           ),
@@ -108,24 +102,36 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
       ),
     );
 
+    // 2. Execute
     if (confirm == true) {
-      await _jobRepository.startJob(widget.jobId);
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Job Started!")));
+      try {
+        await _jobRepository.startJob(widget.jobId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Job successfully started!"),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text("Error starting job: $e")));
+        }
       }
     }
   }
 
-  // [UPDATED] Mark Complete (Now handles multiple hires in repo)
+  // [UPDATED] Mark Complete (Handles state transition)
   Future<void> _markAsComplete() async {
     bool? confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Mark as Completed?"),
         content: const Text(
-          "Confirm that the work has been done satisfactorily for all hired workers.",
+          "This confirms all work has been finished. You will then be able to rate your hired workers.",
         ),
         actions: [
           TextButton(
@@ -134,50 +140,68 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text("Confirm"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text("Confirm Complete"),
           ),
         ],
       ),
     );
 
     if (confirm == true) {
-      await _jobRepository.markJobComplete(widget.jobId);
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Job marked as completed!")),
-        );
+      try {
+        await _jobRepository.markJobComplete(widget.jobId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Job marked as completed!")),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text("Error: $e")));
+        }
+      }
     }
   }
 
+  // [UPDATED] Helper to navigate to list view (for Viewing or Rating)
+  void _viewHiredApplicants(String title, {bool allowRating = false}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => JobApplicantsPage(
+          jobId: widget.jobId,
+          jobTitle: title,
+          showHiredOnly: true, // Only show the team
+          allowRating: allowRating, // Enable rating buttons if completed
+        ),
+      ),
+    );
+  }
+
   void _showRatingDialog(Map<String, dynamic> liveData) {
-    // ... (Rating dialog logic same as before) ...
-    // [Keeping existing code logic for brevity, just updating _buildOwnerActionButton]
+    // This is primarily for the Worker to rate the Employer
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
 
     final String employerId = liveData['posterId'] ?? liveData['postedBy'];
-    final String? workerId = liveData['hiredApplicantId'];
-    String targetId = "";
 
-    if (currentUser.uid == employerId) {
-      if (workerId == null || workerId.isEmpty) return;
-      targetId = workerId;
-    } else if (currentUser.uid == workerId) {
-      targetId = employerId;
-    } else {
-      return;
-    }
+    // Safety check
+    if (currentUser.uid == employerId) return; // Employers don't rate here
 
     showDialog(
       context: context,
       builder: (context) => RateUserDialog(
-        targetUserId: targetId,
+        targetUserId: employerId,
         jobId: widget.jobId,
         onSubmit: (rating, review) async {
           try {
             await _jobRepository.rateUser(
-              targetUserId: targetId,
+              targetUserId: employerId,
               rating: rating,
               review: review,
               jobId: widget.jobId,
@@ -199,8 +223,9 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
               ScaffoldMessenger.of(
                 context,
               ).showSnackBar(SnackBar(content: Text(msg)));
-              if (msg.contains("already rated"))
+              if (msg.contains("already rated")) {
                 setState(() => _hasRated = true);
+              }
             }
           }
         },
@@ -213,18 +238,20 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     try {
       await _jobRepository.applyForJob(widget.jobId, liveData);
       setState(() => _hasApplied = true);
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Application Sent!"),
             backgroundColor: Colors.green,
           ),
         );
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
     } finally {
       if (mounted) setState(() => _isApplying = false);
     }
@@ -240,7 +267,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
   }
 
   void _confirmDelete() {
-    // ... (Existing delete logic) ...
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -265,17 +291,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
             child: const Text("Delete", style: TextStyle(color: Colors.red)),
           ),
         ],
-      ),
-    );
-  }
-
-  void _viewHiredApplicants(String title) {
-    // Navigate to applicants page to see list (you can add filter logic there later)
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            JobApplicantsPage(jobId: widget.jobId, jobTitle: title),
       ),
     );
   }
@@ -308,8 +323,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         final String posterId = data['posterId'] ?? data['postedBy'] ?? "";
         final bool isOwner = currentUid.isNotEmpty && currentUid == posterId;
         final String status = data['status'] ?? 'open';
-
-        // [NEW] Get hired count safely
         final int hiredCount = data['hiredCount'] ?? 0;
 
         return Scaffold(
@@ -369,8 +382,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
               ),
             ],
           ),
-
-          // --- FLOATING ACTION BAR (Modern UX) ---
           bottomNavigationBar: _isLoadingState
               ? Container(
                   height: 100,
@@ -397,7 +408,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                   ),
                   child: SafeArea(
                     child: isOwner
-                        // [UPDATED] Pass hiredCount to owner buttons
                         ? _buildOwnerActionButton(
                             status,
                             hiredCount,
@@ -407,12 +417,10 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                         : _buildWorkerActionButton(status, data),
                   ),
                 ),
-
           body: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. EPIC HEADER
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(24, 100, 24, 30),
@@ -441,7 +449,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                               Colors.red.shade50,
                               Colors.red.shade700,
                             ),
-                          // [UPDATED] Status Chips
                           if (status == 'completed')
                             _buildStatusChip(
                               "Completed",
@@ -485,9 +492,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 20),
-
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Column(
@@ -495,15 +500,12 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                     children: [
                       if (!isOwner) _buildEmployerCard(data),
                       if (!isOwner) const SizedBox(height: 24),
-
                       _buildInfoCard(
                         Icons.location_on,
                         "Location",
                         data['location'] ?? "Remote",
                       ),
-
                       const SizedBox(height: 12),
-
                       Row(
                         children: [
                           Expanded(
@@ -514,7 +516,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          // [UPDATED] Clickable Applicants Card
                           Expanded(
                             child: GestureDetector(
                               onTap: isOwner
@@ -538,9 +539,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
                           ),
                         ],
                       ),
-
                       const SizedBox(height: 30),
-
                       const Text(
                         "About the Job",
                         style: TextStyle(
@@ -571,7 +570,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
   }
 
   // --- UI WIDGETS ---
-
   Widget _buildTag(String text, Color bg, Color textCol) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -778,7 +776,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
     );
   }
 
-  // --- BUTTON HELPERS ---
   ButtonStyle _primaryBtnStyle(Color color) => ElevatedButton.styleFrom(
     backgroundColor: color,
     foregroundColor: Colors.white,
@@ -816,12 +813,12 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
             ),
           ),
 
-          // [NEW] Show Start Job if anyone hired
           if (hiredCount > 0) ...[
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
+                // Safety: Only allow click if hired > 0
                 onPressed: _startJob,
                 style: _primaryBtnStyle(Colors.green),
                 child: Text("Start Job ($hiredCount Hired)"),
@@ -834,11 +831,13 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // [NEW] View Hired List
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
-              onPressed: () => _viewHiredApplicants(data['title']),
+              onPressed: () => _viewHiredApplicants(
+                data['title'],
+                allowRating: false,
+              ), // View only
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
@@ -849,7 +848,6 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
             ),
           ),
           const SizedBox(height: 12),
-          // [UPDATED] Mark Complete
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -861,12 +859,14 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
         ],
       );
     } else if (status == 'completed') {
+      // Logic: Owner rates multiple people, so we send them to the list view.
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton(
-          onPressed: _hasRated ? null : () => _showRatingDialog(data),
-          style: _primaryBtnStyle(_hasRated ? Colors.grey : Colors.amber[800]!),
-          child: Text(_hasRated ? "You Rated This Worker" : "Rate Worker"),
+          onPressed: () =>
+              _viewHiredApplicants(data['title'], allowRating: true),
+          style: _primaryBtnStyle(Colors.amber[800]!),
+          child: const Text("Rate Workers"),
         ),
       );
     }
@@ -874,9 +874,7 @@ class _JobDetailsPageState extends State<JobDetailsPage> {
   }
 
   Widget _buildWorkerActionButton(String status, Map<String, dynamic> data) {
-    // Keep existing logic for workers
     if (status == 'completed') {
-      // ... (Existing completed logic) ...
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton(

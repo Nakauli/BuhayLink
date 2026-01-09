@@ -1,3 +1,4 @@
+import 'package:buhay_link/widgets/rate_user_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../jobs/data/repositories/job_repository.dart';
@@ -6,14 +7,15 @@ import 'public_profile_page.dart';
 class JobApplicantsPage extends StatefulWidget {
   final String jobId;
   final String jobTitle;
-  // [NEW] Parameter to filter for hired team only
   final bool showHiredOnly;
+  final bool allowRating;
 
   const JobApplicantsPage({
     super.key,
     required this.jobId,
     required this.jobTitle,
-    this.showHiredOnly = false, // Default to showing all applicants
+    this.showHiredOnly = false,
+    this.allowRating = false,
   });
 
   @override
@@ -84,14 +86,61 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
     }
   }
 
+  // --- 4. RATE FUNCTION (FIXED CRASH) ---
+  void _rateApplicant(String applicantId) {
+    showDialog(
+      context: context,
+      // [FIX 1] Rename this to 'dialogContext' to avoid shadowing the main 'context'
+      builder: (dialogContext) => RateUserDialog(
+        targetUserId: applicantId,
+        jobId: widget.jobId,
+        onSubmit: (rating, review) async {
+          try {
+            await _jobRepository.rateUser(
+              targetUserId: applicantId,
+              rating: rating,
+              review: review,
+              jobId: widget.jobId,
+            );
+
+            // Check if page is still mounted before using 'context'
+            if (mounted) {
+              // [FIX 2] Use 'context' (from State), NOT 'dialogContext'
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Rating submitted successfully!"),
+                  backgroundColor: Colors.green,
+                ),
+              );
+              // Trigger rebuild to update the "Rate" button to "Rated"
+              setState(() {});
+            }
+          } catch (e) {
+            if (mounted) {
+              String msg = e.toString().contains("already rated")
+                  ? "You already rated this user."
+                  : "Error submitting rating.";
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(msg)));
+              // If already rated, we still want to update UI to disable button
+              if (msg.contains("already rated")) setState(() {});
+            }
+          }
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(
-          // [UPDATED] Dynamic Title
-          widget.showHiredOnly ? "Hired Team" : "Applicants",
+          widget.showHiredOnly
+              ? (widget.allowRating ? "Rate Team" : "Hired Team")
+              : "Applicants",
           style: const TextStyle(
             color: Colors.black,
             fontWeight: FontWeight.bold,
@@ -109,49 +158,32 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
             .orderBy('appliedAt', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
-          // Error Handling
           if (snapshot.hasError) {
-            return Center(
-              child: Text("Something went wrong: ${snapshot.error}"),
-            );
+            return Center(child: Text("Error: ${snapshot.error}"));
           }
-
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.people_outline,
-                    size: 60,
-                    color: Colors.grey,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    widget.showHiredOnly
-                        ? "No hired members yet."
-                        : "No active applicants.",
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                ],
+              child: Text(
+                widget.showHiredOnly
+                    ? "No hired members yet."
+                    : "No active applicants.",
+                style: const TextStyle(color: Colors.grey),
               ),
             );
           }
 
-          // FIX: Safer filtering logic based on showHiredOnly parameter
+          // Filter Logic
           final docs = snapshot.data!.docs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
             final status = data['status'] ?? 'pending';
 
             if (widget.showHiredOnly) {
-              // Only show hired or completed
               return status == 'hired' || status == 'completed';
             } else {
-              // Show everyone EXCEPT rejected
               return status != 'rejected';
             }
           }).toList();
@@ -175,18 +207,13 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
               var doc = docs[index];
               var data = doc.data() as Map<String, dynamic>;
               String applicantId = doc.id;
-
-              // Safe Data Handling
               String name = data['name'] ?? "Unknown";
               String photoUrl = data['photoUrl'] ?? "";
               Timestamp? appliedAt = data['appliedAt'];
-
-              // --- Check Status ---
               String status = data['status'] ?? 'pending';
               bool isHired = status == 'hired' || status == 'completed';
 
-              // --- 4. SWIPE TO REJECT WRAPPER ---
-              // [UPDATED] Disable swipe if we are in "Hired Team" mode
+              // Disable swipe if in Hired/Rate mode
               bool canDismiss = !widget.showHiredOnly && !isHired;
 
               return Dismissible(
@@ -201,18 +228,14 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                     color: Colors.red[100],
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
-                    Icons.delete_forever,
-                    color: Colors.red,
-                    size: 30,
-                  ),
+                  child: const Icon(Icons.delete_forever, color: Colors.red),
                 ),
                 confirmDismiss: (direction) async {
                   return await showDialog(
                     context: context,
                     builder: (ctx) => AlertDialog(
                       title: const Text("Reject Applicant?"),
-                      content: Text("Are you sure you want to reject $name?"),
+                      content: Text("Reject $name?"),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(ctx, false),
@@ -229,19 +252,15 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                     ),
                   );
                 },
-                onDismissed: (direction) {
-                  _rejectApplicant(applicantId);
-                },
+                onDismissed: (_) => _rejectApplicant(applicantId),
                 child: InkWell(
                   onTap: () {
-                    // Navigate to Public Profile
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => PublicProfilePage(
                           userId: applicantId,
                           userName: name,
-                          // [FIX]: Set to FALSE so we can see the applicant's resume & skills
                           isEmployerProfile: false,
                         ),
                       ),
@@ -250,40 +269,21 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: isHired
-                          ? Colors.green.shade50
-                          : Colors.white, // Highlight if hired
+                      color: isHired ? Colors.green.shade50 : Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: isHired
                             ? Colors.green.shade200
                             : Colors.grey.shade200,
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
                     ),
                     child: Row(
                       children: [
                         CircleAvatar(
-                          radius: 25,
-                          backgroundColor: Colors.blue.shade50,
-                          backgroundImage: (photoUrl.isNotEmpty)
+                          backgroundImage: photoUrl.isNotEmpty
                               ? NetworkImage(photoUrl)
                               : null,
-                          child: photoUrl.isEmpty
-                              ? Text(
-                                  name.isNotEmpty ? name[0].toUpperCase() : "U",
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue,
-                                  ),
-                                )
-                              : null,
+                          child: photoUrl.isEmpty ? Text(name[0]) : null,
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -294,34 +294,65 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                                 name,
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 16,
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.access_time,
-                                    size: 12,
-                                    color: Colors.grey[400],
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _timeAgo(appliedAt),
-                                    style: TextStyle(
-                                      color: Colors.green[700],
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
+                              Text(
+                                _timeAgo(appliedAt),
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                ),
                               ),
                             ],
                           ),
                         ),
 
-                        // --- SHOW HIRED BADGE OR HIRE BUTTON ---
-                        if (isHired)
+                        // --- BUTTON LOGIC ---
+                        if (widget.allowRating)
+                          // [FIX 3] Use FutureBuilder to check if ALREADY RATED
+                          FutureBuilder<bool>(
+                            future: _jobRepository.hasUserRated(
+                              applicantId,
+                              widget.jobId,
+                            ),
+                            builder: (context, snapshot) {
+                              // While loading, show nothing or spinner
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                );
+                              }
+
+                              bool isRated = snapshot.data ?? false;
+
+                              if (isRated) {
+                                return const Chip(
+                                  label: Text(
+                                    "Rated",
+                                    style: TextStyle(color: Colors.grey),
+                                  ),
+                                  backgroundColor: Color(0xFFEEEEEE),
+                                );
+                              }
+
+                              return ElevatedButton(
+                                onPressed: () => _rateApplicant(applicantId),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.amber,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                ),
+                                child: const Text("Rate"),
+                              );
+                            },
+                          )
+                        else if (isHired)
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 12,
@@ -354,22 +385,8 @@ class _JobApplicantsPageState extends State<JobApplicantsPage> {
                             onPressed: () => _hireApplicant(applicantId, name),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.green,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 10,
-                              ),
-                              elevation: 0,
                             ),
-                            child: const Text(
-                              "Hire",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                            child: const Text("Hire"),
                           ),
                       ],
                     ),
